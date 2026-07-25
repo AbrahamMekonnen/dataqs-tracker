@@ -3,7 +3,7 @@ import sqlite3
 import os
 
 here = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(here, "leads.db")
+db_path = os.path.join(os.environ.get("DATA_DIR", here), "leads.db")
 csv_path = os.path.join(here, "dataqs_lead_list.csv")
 
 con = sqlite3.connect(db_path)

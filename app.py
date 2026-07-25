@@ -10,10 +10,18 @@ from flask import (Flask, jsonify, redirect, render_template_string, request,
 import audit as audit_engine
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DB = os.path.join(HERE, "leads.db")
-PDF_DIR = os.path.join(HERE, "audits")
-SECRET_FILE = os.path.join(HERE, "secret.json")
+# DATA_DIR: on Railway this points at the mounted volume (/data) so the
+# database, PIN, and generated PDFs survive redeploys; locally it's the app dir.
+DATA = os.environ.get("DATA_DIR", HERE)
+os.makedirs(DATA, exist_ok=True)
+DB = os.path.join(DATA, "leads.db")
+PDF_DIR = os.path.join(DATA, "audits")
+SECRET_FILE = os.path.join(DATA, "secret.json")
 os.makedirs(PDF_DIR, exist_ok=True)
+
+# first boot on a fresh volume: seed the database from the bundled CSV
+if not os.path.exists(DB):
+    import seed_db  # noqa: F401  (runs the seed as an import side effect)
 
 # first run: generate a PIN + cookie-signing key; change the PIN in secret.json
 if not os.path.exists(SECRET_FILE):
@@ -22,6 +30,10 @@ if not os.path.exists(SECRET_FILE):
                    "flask_key": secrets.token_hex(32)}, f)
 with open(SECRET_FILE) as f:
     _sec = json.load(f)
+# cloud override: set APP_PIN in the host's environment variables to choose
+# your own PIN (Railway dashboard -> service -> Variables)
+if os.environ.get("APP_PIN"):
+    _sec["pin"] = os.environ["APP_PIN"].strip()
 
 app = Flask(__name__)
 app.secret_key = _sec["flask_key"]

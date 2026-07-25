@@ -1,0 +1,5 @@
+﻿leads.db
+audits/
+secret.json
+__pycache__/
+*.pyc

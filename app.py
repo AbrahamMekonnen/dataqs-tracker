@@ -87,6 +87,10 @@ with open(SECRET_FILE) as f:
 # your own PIN (Railway dashboard -> service -> Variables)
 if os.environ.get("APP_PIN"):
     _sec["pin"] = os.environ["APP_PIN"].strip()
+    print("[startup] PIN source: APP_PIN environment variable", flush=True)
+else:
+    print("[startup] PIN source: generated secret.json (APP_PIN env var NOT set "
+          "- on Railway, add APP_PIN in the service's Variables tab)", flush=True)
 
 app = Flask(__name__)
 app.secret_key = _sec["flask_key"]

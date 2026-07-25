@@ -136,7 +136,7 @@ PAGE = """<!doctype html>
  <td>{% for b in r['alert_basics'].split('|') %}<span class="pill">{{b}}</span> {% endfor %}</td>
  <td>{{r['inspections']}}</td>
  <td><a href="{{r['sms_profile']}}" target="_blank">open</a></td>
- <td><a class="abtn" href="/audit/{{r['id']}}" target="_blank">audit</a></td>
+ <td><a class="abtn" href="/audit/{{r['id']}}/{{r['slug']}}" target="_blank">audit</a></td>
  <td><select class="cell" onchange="save(this,'status')">
    {% for s in statuses %}<option {% if r['status']==s %}selected{% endif %}>{{s}}</option>{% endfor %}
  </select></td>
@@ -276,8 +276,8 @@ that case is free and the next eligible one is on us.</div>
 </div>
 
 <div class="btnrow">
- <a class="btn" href="/audit/{{lead['id']}}/pdf">Download PDF (to attach)</a>
- <a class="btn2" href="/audit/{{lead['id']}}?refresh=1">Refresh data</a>
+ <a class="btn" href="/audit/{{lead['id']}}/{{slug}}/pdf">Download PDF (to attach)</a>
+ <a class="btn2" href="/audit/{{lead['id']}}/{{slug}}?refresh=1">Refresh data</a>
  <a class="btn2" href="/">← back to tracker</a>
 </div>
 
@@ -294,11 +294,18 @@ def db():
     return con
 
 
+def slugify(s):
+    import re
+    return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-") or "carrier"
+
+
 @app.route("/")
 def index():
     con = db()
-    rows = con.execute(
-        "SELECT * FROM leads ORDER BY n_alerts DESC, inspections DESC").fetchall()
+    rows = [dict(r) for r in con.execute(
+        "SELECT * FROM leads ORDER BY n_alerts DESC, inspections DESC")]
+    for r in rows:
+        r["slug"] = slugify(r["company"])
     states = [r[0] for r in con.execute(
         "SELECT DISTINCT state FROM leads WHERE state != '' ORDER BY state")]
     con.close()
@@ -338,17 +345,22 @@ def _build_audit(lead_id, refresh=False):
 
 
 @app.route("/audit/<int:lead_id>")
-def audit_page(lead_id):
+@app.route("/audit/<int:lead_id>/<slug>")
+def audit_page(lead_id, slug=None):
     lead, findings, summary, fetched = _build_audit(
         lead_id, refresh=request.args.get("refresh") == "1")
     if lead is None:
         return "lead not found", 404
+    want = slugify(lead["company"])
+    if slug != want:  # keep URLs canonical and readable
+        return redirect("/audit/{}/{}".format(lead_id, want))
     return render_template_string(AUDIT_PAGE, lead=lead, findings=findings,
-                                  summary=summary, fetched=fetched)
+                                  summary=summary, fetched=fetched, slug=want)
 
 
 @app.route("/audit/<int:lead_id>/pdf")
-def audit_pdf(lead_id):
+@app.route("/audit/<int:lead_id>/<slug>/pdf")
+def audit_pdf(lead_id, slug=None):
     lead, findings, summary, fetched = _build_audit(lead_id)
     if lead is None:
         return "lead not found", 404

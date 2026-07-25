@@ -745,6 +745,40 @@ a{color:#0563c1}.saved{color:#16a34a;font-weight:600;margin-left:10px}</style></
 <a href="/" style="margin-left:14px">← back to tracker</a></form></body></html>"""
 
 
+@app.route("/maildebug")
+def maildebug():
+    import requests
+    cfg = email_cfg()
+    if not cfg.get("api_key"):
+        return "<pre>No BREVO_API_KEY configured.</pre>"
+    out = []
+    # 1) account / sender status
+    try:
+        acct = requests.get("https://api.brevo.com/v3/account",
+                            headers={"api-key": cfg["api_key"], "accept": "application/json"},
+                            timeout=30)
+        out.append("ACCOUNT (status {}):\n{}\n".format(acct.status_code, acct.text[:800]))
+    except Exception as e:
+        out.append("account check failed: {}\n".format(e))
+    # 2) verified senders
+    try:
+        snd = requests.get("https://api.brevo.com/v3/senders",
+                           headers={"api-key": cfg["api_key"], "accept": "application/json"},
+                           timeout=30)
+        out.append("SENDERS (status {}):\n{}\n".format(snd.status_code, snd.text[:800]))
+    except Exception as e:
+        out.append("senders check failed: {}\n".format(e))
+    # 3) recent delivery events (the real answer: delivered / blocked / bounce)
+    try:
+        ev = requests.get("https://api.brevo.com/v3/smtp/statistics/events",
+                          headers={"api-key": cfg["api_key"], "accept": "application/json"},
+                          params={"limit": 25, "sort": "desc"}, timeout=30)
+        out.append("RECENT EVENTS (status {}):\n{}\n".format(ev.status_code, ev.text[:2000]))
+    except Exception as e:
+        out.append("events check failed: {}\n".format(e))
+    return "<pre style='white-space:pre-wrap;font-size:12px'>" + "\n".join(out) + "</pre>"
+
+
 @app.route("/template", methods=["GET", "POST"])
 def template_editor():
     if request.method == "POST":

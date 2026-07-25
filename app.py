@@ -56,6 +56,12 @@ def email_cfg():
     return cfg
 
 
+_ec = email_cfg()
+print("[startup] email mode:", "Brevo HTTPS API" if _ec.get("api_key")
+      else ("SMTP (will time out on Railway)" if _ec.get("smtp_pass")
+            else "NOT CONFIGURED"), flush=True)
+
+
 RECOMMENDED_TEMPLATE = """Subject: Your CSA Record Audit - [COMPANY]
 
 Hi,
@@ -678,6 +684,8 @@ def send_audit(lead_id):
                                        "content-type": "application/json",
                                        "accept": "application/json"},
                               json=payload, timeout=30)
+            print("[send] to={} brevo_status={} resp={}".format(
+                to_addr, r.status_code, r.text[:300]), flush=True)
             if r.status_code >= 300:
                 return jsonify(error="Send failed ({}): {}".format(
                     r.status_code, r.text[:300])), 500

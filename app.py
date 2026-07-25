@@ -484,7 +484,7 @@ def _render_pdf(lead, findings, summary, fetched):
     from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer, Table,
                                     TableStyle)
 
-    path = os.path.join(PDF_DIR, "audit_{}_{}.pdf".format(lead["dot_number"], lead_id))
+    path = os.path.join(PDF_DIR, "audit_{}_{}.pdf".format(lead["dot_number"], lead["id"]))
     doc = SimpleDocTemplate(path, pagesize=letter, leftMargin=0.7 * inch,
                             rightMargin=0.7 * inch, topMargin=0.6 * inch,
                             bottomMargin=0.6 * inch)

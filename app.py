@@ -23,6 +23,59 @@ os.makedirs(PDF_DIR, exist_ok=True)
 if not os.path.exists(DB):
     import seed_db  # noqa: F401  (runs the seed as an import side effect)
 
+# light migration: add the email column to older databases
+_c = sqlite3.connect(DB)
+try:
+    _c.execute("ALTER TABLE leads ADD COLUMN email TEXT")
+    _c.commit()
+except sqlite3.OperationalError:
+    pass
+_c.close()
+
+# email sending config: fill in the blanks in email_config.json (or set the
+# same keys as environment variables on the cloud host). For Gmail: enable
+# 2-step verification, then create an App Password at
+# https://myaccount.google.com/apppasswords and paste it as smtp_pass.
+EMAIL_CFG_FILE = os.path.join(DATA, "email_config.json")
+if not os.path.exists(EMAIL_CFG_FILE):
+    with open(EMAIL_CFG_FILE, "w") as f:
+        json.dump({"smtp_host": "smtp.gmail.com", "smtp_port": 587,
+                   "smtp_user": "", "smtp_pass": "",
+                   "from_name": "", "my_name": "", "my_phone": ""}, f, indent=2)
+
+
+def email_cfg():
+    with open(EMAIL_CFG_FILE) as f:
+        cfg = json.load(f)
+    for k in list(cfg):
+        if os.environ.get(k.upper()):
+            cfg[k] = os.environ[k.upper()]
+    return cfg
+
+
+TEMPLATE_FILE = os.path.join(DATA, "email_template.txt")
+if not os.path.exists(TEMPLATE_FILE):
+    with open(TEMPLATE_FILE, "w") as f:
+        f.write("""Subject: [COMPANY] - [CHALLENGE] violations on your DOT record look challengeable
+
+Hi,
+
+Good talking with you. As promised, attached is the free audit of [COMPANY]'s federal safety record (DOT [DOT]).
+
+The short version:
+- [TOTAL] violations are still counting against your CSA scores
+- [CHALLENGE] of them look challengeable right now
+- your record carries active alert flags in [ALERTS] - that's what brokers and insurers see when they screen you
+
+The attached PDF shows exactly which records look wrong and what evidence it would take to get them removed under the new DataQs rules (the government has 21 days to answer now).
+
+If you want them run down: $500 flat gets the full review of all 24 months plus your first challenge package - built, filed, and chased until you have a written answer. Founding price, first 10 carriers only.
+
+Call or text me anytime: [MY_PHONE]
+
+[MY_NAME]
+""")
+
 # first run: generate a PIN + cookie-signing key; change the PIN in secret.json
 if not os.path.exists(SECRET_FILE):
     with open(SECRET_FILE, "w") as f:
@@ -89,7 +142,7 @@ STATUSES = ["New", "Researching", "Audit Built", "Called - No Answer", "Called -
             "Audit Emailed", "In Conversation", "Paid Audit ($500)", "Customer",
             "Not Interested", "Bad Fit", "Invalid Phone"]
 PRIORITIES = ["", "A - hot", "B - warm", "C - later"]
-EDITABLE = {"status", "priority", "first_contact", "last_contact", "audit_sent", "outcome", "next_step", "notes"}
+EDITABLE = {"status", "priority", "first_contact", "last_contact", "audit_sent", "outcome", "next_step", "notes", "email"}
 
 # ---------------------------------------------------------------- tracker page
 PAGE = """<!doctype html>
@@ -136,7 +189,7 @@ PAGE = """<!doctype html>
 <div class="wrap"><table id="t">
 <thead><tr>
  <th>DOT #</th><th>Company</th><th>City</th><th>ST</th><th>Phone</th><th>Trucks</th>
- <th>Alert BASICs</th><th>Insp.</th><th>SMS</th><th>Audit</th><th>Status</th><th>Priority</th>
+ <th>Alert BASICs</th><th>Insp.</th><th>SMS</th><th>Audit</th><th>Email</th><th>✉</th><th>Status</th><th>Priority</th>
  <th>First contact</th><th>Last contact</th><th>Audit sent</th><th>Outcome</th><th>Next step</th><th>Notes</th>
 </tr></thead><tbody>
 {% for r in rows %}
@@ -149,6 +202,8 @@ PAGE = """<!doctype html>
  <td>{{r['inspections']}}</td>
  <td><a href="{{r['sms_profile']}}" target="_blank">open</a></td>
  <td><a class="abtn" href="/audit/{{r['id']}}/{{r['slug']}}" target="_blank">audit</a></td>
+ <td contenteditable onblur="save(this,'email')" class="mail" style="min-width:150px">{{r['email'] or ''}}</td>
+ <td><a class="abtn sendbtn" href="#" onclick="return sendAudit(this)">send</a></td>
  <td><select class="cell" onchange="save(this,'status')">
    {% for s in statuses %}<option {% if r['status']==s %}selected{% endif %}>{{s}}</option>{% endfor %}
  </select></td>
@@ -189,6 +244,32 @@ function paint(){
                (!fst || tr.dataset.state === fst);
     tr.style.display = ok ? '' : 'none';
   });
+}
+function sendAudit(el){
+  const tr = el.closest('tr');
+  const email = tr.querySelector('td.mail').innerText.trim();
+  if(!email || !email.includes('@')){ alert('Type their email in the Email cell first.'); return false; }
+  const company = tr.querySelector('td b').innerText;
+  if(!confirm('Send audit PDF + pitch email to ' + email + ' (' + company + ')?')) return false;
+  el.textContent = '...';
+  fetch('/send/' + tr.dataset.id, {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email: email})})
+    .then(r => r.json().then(j => ({ok: r.ok, j: j})))
+    .then(({ok, j}) => {
+      if(ok){
+        el.textContent = 'sent ✓'; el.style.background = '#6b7280';
+        tr.dataset.status = 'Audit Emailed';
+        const sel = tr.querySelectorAll('select.cell');
+        sel[0].value = 'Audit Emailed';          // status dropdown
+        sel[2].value = 'Yes';                    // audit-sent dropdown
+        counts();
+      } else {
+        el.textContent = 'send';
+        alert(j.error || 'send failed');
+      }
+    })
+    .catch(e => { el.textContent = 'send'; alert('send failed: ' + e); });
+  return false;
 }
 function counts(){
   let n=0, w=0, p=0, c=0, d=0;
@@ -376,6 +457,12 @@ def audit_pdf(lead_id, slug=None):
     lead, findings, summary, fetched = _build_audit(lead_id)
     if lead is None:
         return "lead not found", 404
+    path = _render_pdf(lead, findings, summary, fetched)
+    return send_file(path, as_attachment=True,
+                     download_name="CSA_Record_Audit_{}.pdf".format(lead["company"].replace(" ", "_")))
+
+
+def _render_pdf(lead, findings, summary, fetched):
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -513,8 +600,68 @@ def audit_pdf(lead_id, slug=None):
                         "reviewing agencies. 'Challengeable' reflects our reading of the public record; your evidence "
                         "determines what is actually filed.", small))
     doc.build(el)
-    return send_file(path, as_attachment=True,
-                     download_name="CSA_Record_Audit_{}.pdf".format(lead["company"].replace(" ", "_")))
+    return path
+
+
+@app.route("/send/<int:lead_id>", methods=["POST"])
+def send_audit(lead_id):
+    import smtplib
+    from email.message import EmailMessage
+    from datetime import date
+
+    cfg = email_cfg()
+    if not cfg.get("smtp_user") or not cfg.get("smtp_pass"):
+        return jsonify(error="Email not configured yet - fill in smtp_user and "
+                             "smtp_pass in email_config.json"), 400
+    to_addr = (request.get_json(force=True).get("email") or "").strip()
+    if "@" not in to_addr:
+        return jsonify(error="No valid email on this lead"), 400
+
+    lead, findings, summary, fetched = _build_audit(lead_id)
+    if lead is None:
+        return jsonify(error="lead not found"), 404
+    pdf_path = _render_pdf(lead, findings, summary, fetched)
+
+    with open(TEMPLATE_FILE, encoding="utf-8") as f:
+        tpl = f.read()
+    alerts = ", ".join(summary["alert_basics"]) or "multiple categories"
+    for token, val in [("[COMPANY]", lead["company"]), ("[DOT]", lead["dot_number"]),
+                       ("[TOTAL]", str(summary["total_viols"])),
+                       ("[CHALLENGE]", str(summary["n_challenge"])),
+                       ("[ALERTS]", alerts),
+                       ("[MY_NAME]", cfg.get("my_name", "")),
+                       ("[MY_PHONE]", cfg.get("my_phone", ""))]:
+        tpl = tpl.replace(token, val)
+    lines = tpl.strip().splitlines()
+    subject = lines[0].replace("Subject:", "").strip()
+    body = "\n".join(lines[1:]).strip()
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = "{} <{}>".format(cfg.get("from_name") or cfg["smtp_user"], cfg["smtp_user"])
+    msg["To"] = to_addr
+    msg.set_content(body)
+    with open(pdf_path, "rb") as f:
+        msg.add_attachment(f.read(), maintype="application", subtype="pdf",
+                           filename="CSA_Record_Audit_{}.pdf".format(
+                               lead["company"].replace(" ", "_")))
+    try:
+        with smtplib.SMTP(cfg["smtp_host"], int(cfg["smtp_port"]), timeout=30) as s:
+            s.starttls()
+            s.login(cfg["smtp_user"], cfg["smtp_pass"])
+            s.send_message(msg)
+    except Exception as e:
+        return jsonify(error="Send failed: {}".format(e)), 500
+
+    today = date.today().strftime("%m/%d/%Y")
+    con = db()
+    con.execute("UPDATE leads SET email=?, audit_sent='Yes', status='Audit Emailed', "
+                "last_contact=?, first_contact=CASE WHEN first_contact IS NULL OR "
+                "first_contact='' THEN ? ELSE first_contact END WHERE id=?",
+                (to_addr, today, today, lead_id))
+    con.commit()
+    con.close()
+    return jsonify(ok=True, sent_to=to_addr)
 
 
 if __name__ == "__main__":

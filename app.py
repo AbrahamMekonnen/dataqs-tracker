@@ -386,32 +386,92 @@ def audit_pdf(lead_id, slug=None):
     cell = ParagraphStyle("cell", parent=ss["Normal"], fontSize=8, leading=10)
     cellb = ParagraphStyle("cellb", parent=cell, fontName="Helvetica-Bold")
 
+    h2 = ParagraphStyle("h2", parent=ss["Normal"], fontName="Helvetica-Bold",
+                        fontSize=13, textColor=colors.HexColor("#1f3864"),
+                        spaceBefore=6, spaceAfter=6)
+    statnum = ParagraphStyle("statnum", parent=ss["Normal"], fontName="Helvetica-Bold",
+                             fontSize=17, alignment=1)
+    statlbl = ParagraphStyle("statlbl", parent=ss["Normal"], fontSize=7.5,
+                             textColor=colors.HexColor("#5b6b7a"), alignment=1, leading=9)
+
+    def short_basic(b):
+        # source data can contain soft hyphens/odd chars — match by substring
+        lb = (b or "").lower()
+        if "controlled" in lb or "alcohol" in lb:
+            return "Drugs / Alcohol"
+        if "hours" in lb or "hos" in lb:
+            return "HOS Compliance"
+        if "maintenance" in lb:
+            return "Vehicle Maint."
+        return "".join(ch for ch in b if ord(ch) < 0x2000)
+
     el = []
     el.append(Paragraph("CSA Record Error Audit", h1))
     el.append(Paragraph("{} — DOT # {} — {}, {} — prepared {} from public FMCSA data".format(
         lead["company"], lead["dot_number"], lead["city"], lead["state"], fetched), meta))
     el.append(Spacer(1, 10))
     for b in summary["alert_basics"]:
-        el.append(Paragraph("⚠ ACTIVE FEDERAL ALERT FLAG: <b>{}</b> — {}.".format(
-            b, summary["consequences"][b]), warn))
-    el.append(Spacer(1, 8))
+        wt = Table([[Paragraph("<b>ACTIVE FEDERAL ALERT FLAG — {}:</b> {}.".format(
+            b, summary["consequences"][b]), warn)]], colWidths=[7.2 * inch])
+        wt.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fef2f2")),
+            ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#fecaca")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        el.append(wt)
+        el.append(Spacer(1, 4))
+    el.append(Spacer(1, 6))
+
+    stats = Table([[
+        Paragraph(str(summary["total_viols"]), statnum),
+        Paragraph(str(summary["n_challenge"]), statnum),
+        Paragraph(str(summary["n_investigate"]), statnum),
+        Paragraph(str(summary["n_inspections"]), statnum)],
+        [Paragraph("violations in your<br/>24-month window", statlbl),
+         Paragraph("look challengeable<br/>right now", statlbl),
+         Paragraph("worth investigating<br/>with your records", statlbl),
+         Paragraph("inspections<br/>on file", statlbl)]],
+        colWidths=[1.8 * inch] * 4)
+    stats.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f6f8fb")),
+        ("BOX", (0, 0), (0, -1), 0.7, colors.HexColor("#e2e8f0")),
+        ("BOX", (1, 0), (1, -1), 0.7, colors.HexColor("#e2e8f0")),
+        ("BOX", (2, 0), (2, -1), 0.7, colors.HexColor("#e2e8f0")),
+        ("BOX", (3, 0), (3, -1), 0.7, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING", (0, 0), (-1, 0), 7), ("BOTTOMPADDING", (0, 1), (-1, 1), 7),
+    ]))
+    el.append(stats)
+    el.append(Spacer(1, 10))
+
     el.append(Paragraph(
-        "<b>{}</b> violations remain in your 24-month scoring window. <b>{}</b> look challengeable right now and "
-        "<b>{}</b> are worth investigating against your own records. Elevated CSA scores cost carriers an estimated "
-        "20&ndash;40% of available freight opportunities plus higher insurance at every renewal. Under the April 2026 "
-        "DataQs rules these records only come off if someone challenges them with the right evidence.".format(
-            summary["total_viols"], summary["n_challenge"], summary["n_investigate"]), body))
-    el.append(Spacer(1, 12))
+        "Every violation below is still counting against your CSA scores. Carriers with elevated scores lose an "
+        "estimated 20&ndash;40% of available freight opportunities, pay more at every insurance renewal, and get "
+        "inspected more often. Under the April 2026 DataQs rules, wrong records only come off if someone challenges "
+        "them with the right evidence &mdash; before they do their damage.", body))
+    el.append(Spacer(1, 10))
+    el.append(Paragraph("What we found on your record", h2))
 
     rows = [["Date", "Violation", "BASIC", "Sev.", "Our read", "Evidence needed"]]
-    for f in findings[:28]:
+    vstyles = []
+    for i, f in enumerate(findings[:28], 1):
+        if f["priority"] <= 2:
+            bg, fg = "#dcfce7", "#14532d"
+        elif f["priority"] <= 4:
+            bg, fg = "#fef9c3", "#713f12"
+        else:
+            bg, fg = "#eef1f5", "#334155"
+        vstyles.append(("BACKGROUND", (4, i), (4, i), colors.HexColor(bg)))
+        vstyles.append(("TEXTCOLOR", (4, i), (4, i), colors.HexColor(fg)))
+        vcell = ParagraphStyle("v{}".format(i), parent=cellb, textColor=colors.HexColor(fg))
         rows.append([Paragraph(f["date"], cell),
-                     Paragraph(f["desc"] + (" (OOS)" if f["oos"] else ""), cell),
-                     Paragraph(f["basic"], cell),
+                     Paragraph(f["desc"] + (" <b>(OOS)</b>" if f["oos"] else ""), cell),
+                     Paragraph(short_basic(f["basic"]), cell),
                      str(f["severity"]),
-                     Paragraph(f["verdict"], cellb),
+                     Paragraph(f["verdict"], vcell),
                      Paragraph(f["evidence"], cell)])
-    t = Table(rows, colWidths=[0.75 * inch, 2.1 * inch, 1.0 * inch, 0.4 * inch, 1.35 * inch, 1.6 * inch])
+    t = Table(rows, colWidths=[0.72 * inch, 2.05 * inch, 0.95 * inch, 0.38 * inch, 1.4 * inch, 1.7 * inch],
+              repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f3864")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -421,7 +481,7 @@ def audit_pdf(lead_id, slug=None):
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d8dfe8")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f8fb")]),
-    ]))
+    ] + vstyles))
     el.append(t)
     if len(findings) > 28:
         el.append(Paragraph("...plus {} more records — full list reviewed in your paid audit.".format(

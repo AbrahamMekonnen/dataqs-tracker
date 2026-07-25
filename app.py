@@ -40,7 +40,7 @@ EMAIL_CFG_FILE = os.path.join(DATA, "email_config.json")
 if not os.path.exists(EMAIL_CFG_FILE):
     with open(EMAIL_CFG_FILE, "w") as f:
         json.dump({"smtp_host": "smtp.gmail.com", "smtp_port": 587,
-                   "smtp_user": "", "smtp_pass": "",
+                   "smtp_user": "", "smtp_pass": "", "api_key": "",
                    "from_name": "", "my_name": "", "my_phone": ""}, f, indent=2)
 
 
@@ -50,6 +50,9 @@ def email_cfg():
     for k in list(cfg):
         if os.environ.get(k.upper()):
             cfg[k] = os.environ[k.upper()]
+    # accept common aliases for the email-API key
+    cfg["api_key"] = (os.environ.get("BREVO_API_KEY") or os.environ.get("EMAIL_API_KEY")
+                      or cfg.get("api_key", ""))
     return cfg
 
 
@@ -626,9 +629,11 @@ def send_audit(lead_id):
     from datetime import date
 
     cfg = email_cfg()
-    if not cfg.get("smtp_user") or not cfg.get("smtp_pass"):
-        return jsonify(error="Email not configured yet - fill in smtp_user and "
-                             "smtp_pass in email_config.json"), 400
+    if not cfg.get("smtp_user"):
+        return jsonify(error="Set SMTP_USER (your from-address) first"), 400
+    if not cfg.get("api_key") and not cfg.get("smtp_pass"):
+        return jsonify(error="Email not configured. On the cloud, set BREVO_API_KEY "
+                             "(send over HTTPS). Locally you can use smtp_pass instead."), 400
     to_addr = (request.get_json(force=True).get("email") or "").strip()
     if "@" not in to_addr:
         return jsonify(error="No valid email on this lead"), 400
@@ -651,38 +656,55 @@ def send_audit(lead_id):
     lines = tpl.strip().splitlines()
     subject = lines[0].replace("Subject:", "").strip()
     body = "\n".join(lines[1:]).strip()
+    from_name = cfg.get("from_name") or cfg["smtp_user"]
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = formataddr((cfg.get("from_name") or cfg["smtp_user"], cfg["smtp_user"]))
-    msg["To"] = to_addr
-    msg.set_content(body)
-    with open(pdf_path, "rb") as f:
-        msg.add_attachment(f.read(), maintype="application", subtype="pdf",
-                           filename=pdf_filename(lead))
-    import socket
-    # Railway containers often lack an IPv6 route; Gmail resolves to IPv6 first,
-    # causing "[Errno 101] Network is unreachable". Force IPv4 during the send.
-    _orig_gai = socket.getaddrinfo
-
-    def _ipv4_only(*a, **k):
-        return [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
-
-    socket.getaddrinfo = _ipv4_only
-    try:
-        port = int(cfg["smtp_port"])
-        if port == 465:
-            server = smtplib.SMTP_SSL(cfg["smtp_host"], port, timeout=30)
-        else:
-            server = smtplib.SMTP(cfg["smtp_host"], port, timeout=30)
-            server.starttls()
-        with server:
-            server.login(cfg["smtp_user"], cfg["smtp_pass"])
-            server.send_message(msg)
-    except Exception as e:
-        return jsonify(error="Send failed: {}".format(e)), 500
-    finally:
-        socket.getaddrinfo = _orig_gai
+    if cfg.get("api_key"):
+        # Brevo transactional email over HTTPS (port 443) - works on hosts that
+        # block SMTP (Railway does). Sender must be a verified sender in Brevo.
+        import base64
+        import requests
+        with open(pdf_path, "rb") as f:
+            pdf_b64 = base64.b64encode(f.read()).decode()
+        payload = {
+            "sender": {"name": from_name, "email": cfg["smtp_user"]},
+            "to": [{"email": to_addr}],
+            "subject": subject,
+            "textContent": body,
+            "attachment": [{"content": pdf_b64, "name": pdf_filename(lead)}],
+        }
+        try:
+            r = requests.post("https://api.brevo.com/v3/smtp/email",
+                              headers={"api-key": cfg["api_key"],
+                                       "content-type": "application/json",
+                                       "accept": "application/json"},
+                              json=payload, timeout=30)
+            if r.status_code >= 300:
+                return jsonify(error="Send failed ({}): {}".format(
+                    r.status_code, r.text[:300])), 500
+        except Exception as e:
+            return jsonify(error="Send failed: {}".format(e)), 500
+    else:
+        # SMTP fallback (local dev only - blocked on Railway)
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = formataddr((from_name, cfg["smtp_user"]))
+        msg["To"] = to_addr
+        msg.set_content(body)
+        with open(pdf_path, "rb") as f:
+            msg.add_attachment(f.read(), maintype="application", subtype="pdf",
+                               filename=pdf_filename(lead))
+        try:
+            port = int(cfg["smtp_port"])
+            if port == 465:
+                server = smtplib.SMTP_SSL(cfg["smtp_host"], port, timeout=30)
+            else:
+                server = smtplib.SMTP(cfg["smtp_host"], port, timeout=30)
+                server.starttls()
+            with server:
+                server.login(cfg["smtp_user"], cfg["smtp_pass"])
+                server.send_message(msg)
+        except Exception as e:
+            return jsonify(error="Send failed: {}".format(e)), 500
 
     today = date.today().strftime("%m/%d/%Y")
     con = db()

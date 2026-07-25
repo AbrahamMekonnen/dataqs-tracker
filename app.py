@@ -660,13 +660,29 @@ def send_audit(lead_id):
     with open(pdf_path, "rb") as f:
         msg.add_attachment(f.read(), maintype="application", subtype="pdf",
                            filename=pdf_filename(lead))
+    import socket
+    # Railway containers often lack an IPv6 route; Gmail resolves to IPv6 first,
+    # causing "[Errno 101] Network is unreachable". Force IPv4 during the send.
+    _orig_gai = socket.getaddrinfo
+
+    def _ipv4_only(*a, **k):
+        return [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
+
+    socket.getaddrinfo = _ipv4_only
     try:
-        with smtplib.SMTP(cfg["smtp_host"], int(cfg["smtp_port"]), timeout=30) as s:
-            s.starttls()
-            s.login(cfg["smtp_user"], cfg["smtp_pass"])
-            s.send_message(msg)
+        port = int(cfg["smtp_port"])
+        if port == 465:
+            server = smtplib.SMTP_SSL(cfg["smtp_host"], port, timeout=30)
+        else:
+            server = smtplib.SMTP(cfg["smtp_host"], port, timeout=30)
+            server.starttls()
+        with server:
+            server.login(cfg["smtp_user"], cfg["smtp_pass"])
+            server.send_message(msg)
     except Exception as e:
         return jsonify(error="Send failed: {}".format(e)), 500
+    finally:
+        socket.getaddrinfo = _orig_gai
 
     today = date.today().strftime("%m/%d/%Y")
     con = db()

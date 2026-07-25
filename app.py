@@ -53,28 +53,34 @@ def email_cfg():
     return cfg
 
 
-TEMPLATE_FILE = os.path.join(DATA, "email_template.txt")
-if not os.path.exists(TEMPLATE_FILE):
-    with open(TEMPLATE_FILE, "w") as f:
-        f.write("""Subject: [COMPANY] - [CHALLENGE] violations on your DOT record look challengeable
+RECOMMENDED_TEMPLATE = """Subject: Your CSA Record Audit - [COMPANY]
 
 Hi,
 
-Good talking with you. As promised, attached is the free audit of [COMPANY]'s federal safety record (DOT [DOT]).
+As promised, here's the CSA Record Error Audit I put together for [COMPANY] (USDOT [DOT]) from the public federal inspection record.
 
-The short version:
-- [TOTAL] violations are still counting against your CSA scores
-- [CHALLENGE] of them look challengeable right now
-- your record carries active alert flags in [ALERTS] - that's what brokers and insurers see when they screen you
+A few things it flags:
+- [TOTAL] violations are still inside your 24-month scoring window
+- [CHALLENGE] look potentially challengeable, depending on the documents you have
+- your record currently shows alert flags in [ALERTS]
 
-The attached PDF shows exactly which records look wrong and what evidence it would take to get them removed under the new DataQs rules (the government has 21 days to answer now).
+The attached PDF lists the specific records and what evidence each one would need for a DataQs challenge. Nothing here is a guarantee - FMCSA and the states make the final call - but these are the items I'd look at first.
 
-If you want them run down: $500 flat gets the full review of all 24 months plus your first challenge package - built, filed, and chased until you have a written answer. Founding price, first 10 carriers only.
+If you'd like me to run them down for you, the Founding Carrier Record Rescue is $500 flat: I review all 24 months, build your first challenge, file it, and track it through the 21-day review until you get a written answer. Founding price for my first 10 carriers.
 
-Call or text me anytime: [MY_PHONE]
+Either way, happy to answer any questions.
 
 [MY_NAME]
-""")
+CSA Record Rescue
+CSA record reviews and DataQs filing support
+[MY_PHONE]
+Independent service - not affiliated with FMCSA or any state agency
+"""
+
+TEMPLATE_FILE = os.path.join(DATA, "email_template.txt")
+if not os.path.exists(TEMPLATE_FILE):
+    with open(TEMPLATE_FILE, "w", encoding="utf-8") as f:
+        f.write(RECOMMENDED_TEMPLATE)
 
 # first run: generate a PIN + cookie-signing key; change the PIN in secret.json
 if not os.path.exists(SECRET_FILE):
@@ -175,7 +181,7 @@ PAGE = """<!doctype html>
         font-size:13px;opacity:0;transition:opacity .3s}
 </style></head><body>
 <h1>DataQs Lead Tracker</h1>
-<div class="sub">{{total}} small carriers with active BASIC alert flags &middot; FMCSA SMS snapshot June 26, 2026 &middot; yellow cells are editable &middot; <b>Audit</b> builds the personalized audit page + PDF automatically</div>
+<div class="sub">{{total}} small carriers with active BASIC alert flags &middot; FMCSA SMS snapshot June 26, 2026 &middot; yellow cells are editable &middot; <b>Audit</b> builds the personalized audit page + PDF automatically &middot; <a href="/template">edit email template</a></div>
 <div class="cards">
  <div class="card"><b id="c_new">-</b>New</div>
  <div class="card"><b id="c_work">-</b>Working</div>
@@ -462,8 +468,12 @@ def audit_pdf(lead_id, slug=None):
     if lead is None:
         return "lead not found", 404
     path = _render_pdf(lead, findings, summary, fetched)
-    return send_file(path, as_attachment=True,
-                     download_name="CSA_Record_Audit_{}.pdf".format(lead["company"].replace(" ", "_")))
+    return send_file(path, as_attachment=True, download_name=pdf_filename(lead))
+
+
+def pdf_filename(lead):
+    # boring/credible filename per Hormozi: DOT-<num>-CSA-Record-Review.pdf
+    return "DOT-{}-CSA-Record-Review.pdf".format(lead["dot_number"])
 
 
 def _render_pdf(lead, findings, summary, fetched):
@@ -599,10 +609,11 @@ def _render_pdf(lead, findings, summary, fetched):
     el.append(Spacer(1, 6))
     el.append(Paragraph("Call: [YOUR PHONE] — Email: [YOUR EMAIL]", body))
     el.append(Spacer(1, 12))
-    el.append(Paragraph("Prepared from public FMCSA SMS/MCMIS data. Identifies records that may merit a DataQs Request "
-                        "for Data Review; not legal advice. Correction decisions are made solely by FMCSA and state "
-                        "reviewing agencies. 'Challengeable' reflects our reading of the public record; your evidence "
-                        "determines what is actually filed.", small))
+    el.append(Paragraph("Independent service &mdash; not affiliated with FMCSA or any state agency. Prepared from public "
+                        "FMCSA SMS/MCMIS data. Identifies records that may merit a DataQs Request for Data Review; not "
+                        "legal advice. Correction decisions are made solely by FMCSA and state reviewing agencies. "
+                        "'Challengeable' reflects our reading of the public record; your evidence determines what is "
+                        "actually filed.", small))
     doc.build(el)
     return path
 
@@ -611,6 +622,7 @@ def _render_pdf(lead, findings, summary, fetched):
 def send_audit(lead_id):
     import smtplib
     from email.message import EmailMessage
+    from email.utils import formataddr
     from datetime import date
 
     cfg = email_cfg()
@@ -642,13 +654,12 @@ def send_audit(lead_id):
 
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = "{} <{}>".format(cfg.get("from_name") or cfg["smtp_user"], cfg["smtp_user"])
+    msg["From"] = formataddr((cfg.get("from_name") or cfg["smtp_user"], cfg["smtp_user"]))
     msg["To"] = to_addr
     msg.set_content(body)
     with open(pdf_path, "rb") as f:
         msg.add_attachment(f.read(), maintype="application", subtype="pdf",
-                           filename="CSA_Record_Audit_{}.pdf".format(
-                               lead["company"].replace(" ", "_")))
+                           filename=pdf_filename(lead))
     try:
         with smtplib.SMTP(cfg["smtp_host"], int(cfg["smtp_port"]), timeout=30) as s:
             s.starttls()
@@ -666,6 +677,39 @@ def send_audit(lead_id):
     con.commit()
     con.close()
     return jsonify(ok=True, sent_to=to_addr)
+
+
+TEMPLATE_EDIT_PAGE = """<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Email template</title>
+<style>body{font-family:Segoe UI,Arial,sans-serif;margin:16px;background:#f5f7fa;color:#1a2733}
+h2{margin:0 0 4px}.sub{color:#5b6b7a;font-size:12.5px;margin-bottom:10px}
+textarea{width:100%;height:60vh;font-family:Consolas,monospace;font-size:13px;padding:10px;
+border:1px solid #c3ceda;border-radius:8px;box-sizing:border-box}
+.tok{background:#e8eef7;border-radius:6px;padding:1px 6px;font-size:11.5px;margin-right:4px;white-space:nowrap}
+button{margin-top:10px;padding:9px 20px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:14px}
+a{color:#0563c1}.saved{color:#16a34a;font-weight:600;margin-left:10px}</style></head><body>
+<h2>Email template</h2>
+<div class="sub">First line is the subject. These auto-fill per carrier:
+<span class="tok">[COMPANY]</span><span class="tok">[DOT]</span><span class="tok">[TOTAL]</span>
+<span class="tok">[CHALLENGE]</span><span class="tok">[ALERTS]</span><span class="tok">[MY_NAME]</span>
+<span class="tok">[MY_PHONE]</span></div>
+<form method="post"><textarea name="template">{{tpl}}</textarea><br>
+<button>Save</button>{% if saved %}<span class="saved">saved ✓</span>{% endif %}
+<a href="/template?reset=1" style="margin-left:14px">Load recommended default</a>
+<a href="/" style="margin-left:14px">← back to tracker</a></form></body></html>"""
+
+
+@app.route("/template", methods=["GET", "POST"])
+def template_editor():
+    if request.method == "POST":
+        with open(TEMPLATE_FILE, "w", encoding="utf-8") as f:
+            f.write(request.form.get("template", ""))
+        return render_template_string(TEMPLATE_EDIT_PAGE, tpl=request.form.get("template", ""), saved=True)
+    if request.args.get("reset") == "1":
+        with open(TEMPLATE_FILE, "w", encoding="utf-8") as f:
+            f.write(RECOMMENDED_TEMPLATE)
+    with open(TEMPLATE_FILE, encoding="utf-8") as f:
+        return render_template_string(TEMPLATE_EDIT_PAGE, tpl=f.read(), saved=False)
 
 
 if __name__ == "__main__":

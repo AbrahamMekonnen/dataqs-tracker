@@ -47,13 +47,25 @@ def gate():
     return None
 
 
+_attempts = {}  # ip -> [count, first_attempt_ts]
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    import time
+    ip = request.headers.get("CF-Connecting-IP", request.remote_addr)
     if request.method == "POST":
+        cnt, t0 = _attempts.get(ip, [0, time.time()])
+        if time.time() - t0 > 900:          # 15-min window resets
+            cnt, t0 = 0, time.time()
+        if cnt >= 5:
+            return "Too many attempts - locked for 15 minutes.", 429
         if request.form.get("pin", "").strip() == str(_sec["pin"]):
+            _attempts.pop(ip, None)
             session.permanent = True
             session["ok"] = True
             return redirect("/")
+        _attempts[ip] = [cnt + 1, t0]
         return render_template_string(LOGIN_PAGE, err=True)
     return render_template_string(LOGIN_PAGE, err=False)
 

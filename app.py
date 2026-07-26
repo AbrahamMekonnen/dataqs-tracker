@@ -772,6 +772,7 @@ def send_audit(lead_id):
             pdf_b64 = base64.b64encode(f.read()).decode()
         payload = {
             "sender": {"name": from_name, "email": cfg["smtp_user"]},
+            "replyTo": {"name": from_name, "email": cfg["smtp_user"]},
             "to": [{"email": to_addr}],
             "subject": subject,
             "textContent": body,

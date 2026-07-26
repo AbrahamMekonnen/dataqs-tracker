@@ -84,6 +84,8 @@ Reply here or call/text me at [MY_PHONE].
 
 [MY_NAME]
 CSA Record Rescue
+[MY_PHONE]
+csarecordrescue.com
 Independent service - not affiliated with FMCSA or any state agency
 """
 
@@ -947,7 +949,8 @@ def _render_pdf(lead, findings, summary, fetched):
                   "control, or omit evidence you submitted by the requested date, we refund your $500 service fee "
                   "and prepare your next eligible challenge at no charge.", body),
         Spacer(1, 6),
-        Paragraph("Call or text: {} &nbsp;&middot;&nbsp; Email: {}".format(my_phone, my_email), body),
+        Paragraph("Call or text: {} &nbsp;&middot;&nbsp; {} &nbsp;&middot;&nbsp; csarecordrescue.com".format(
+            my_phone, my_email), body),
         Spacer(1, 10),
         Paragraph("Independent service &mdash; not affiliated with FMCSA or any state agency. Prepared from public "
                   "FMCSA SMS/MCMIS data; identifies records that may merit a DataQs Request for Data Review. Not "

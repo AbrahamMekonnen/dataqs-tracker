@@ -368,11 +368,11 @@ supported challenge.</p>
 {% for f in findings %}
 <tr>
  <td style="white-space:nowrap">{{f['date']}}</td>
- <td>{{f['desc']}}{% if f['oos'] %} <b>(OOS)</b>{% endif %}</td>
+ <td><b>{{f['title']}}</b><br><span style="font-size:10px;color:#8494a5">{{f['desc']}}{% if f['oos'] %} (OOS){% endif %}</span></td>
  <td>{{f['basic']}}</td>
  <td>{{f['severity']}}</td>
  <td>{% if f['priority'] <= 2 %}<span class="v1">{{f['verdict']}}</span>
-     {% elif f['priority'] <= 4 %}<span class="v2">{{f['verdict']}}</span>
+     {% elif f['priority'] <= 5 %}<span class="v2">{{f['verdict']}}</span>
      {% else %}<span class="v3">{{f['verdict']}}</span>{% endif %}</td>
  <td>{{f['evidence']}}</td>
  <td style="white-space:nowrap">{{f['rolloff']}}</td>
@@ -503,8 +503,8 @@ def _render_pdf(lead, findings, summary, fetched):
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import inch
-    from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer, Table,
-                                    TableStyle)
+    from reportlab.platypus import (PageBreak, Paragraph, SimpleDocTemplate,
+                                    Spacer, Table, TableStyle)
 
     path = os.path.join(PDF_DIR, "audit_{}_{}.pdf".format(lead["dot_number"], lead["id"]))
     doc = SimpleDocTemplate(path, pagesize=letter, leftMargin=0.7 * inch,
@@ -606,28 +606,61 @@ def _render_pdf(lead, findings, summary, fetched):
         ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
     el.append(ct)
-    el.append(Spacer(1, 10))
-    el.append(Paragraph("What we found on your record", h2))
+    el.append(Spacer(1, 12))
 
-    rows = [["Date", "Violation", "BASIC", "Sev.", "Our read", "Evidence needed"]]
+    # process graphic (how the service works, in one line)
+    proc = Table([[Paragraph("<b>Public record found &nbsp;&rarr;&nbsp; Evidence checked &nbsp;&rarr;&nbsp; "
+                             "You approve &nbsp;&rarr;&nbsp; DataQs filed &nbsp;&rarr;&nbsp; Decision tracked</b>",
+                             ParagraphStyle("proc", parent=body, fontSize=9.5, alignment=1))]],
+                 colWidths=[7.2 * inch])
+    proc.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f6f8fb")),
+        ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    el.append(proc)
+    el.append(Spacer(1, 14))
+
+    # executive summary: the top 3 findings, on page 1
+    el.append(Paragraph("Highest-priority findings", h2))
+    t3 = ParagraphStyle("t3", parent=body, fontSize=10.5, leading=13, spaceAfter=1)
+    t3s = ParagraphStyle("t3s", parent=body, fontSize=8.5, leading=11,
+                         textColor=colors.HexColor("#5b6b7a"), spaceAfter=8)
+    for i, f in enumerate(summary.get("top3", []), 1):
+        el.append(Paragraph("<b>{}. {}</b> &mdash; {} (severity {}{})".format(
+            i, f["title"], f["date"], f["severity"], ", out of service" if f["oos"] else ""), t3))
+        el.append(Paragraph("Our read: {}. Evidence to check: {}.".format(
+            f["verdict"], f["evidence"]), t3s))
+
+    el.append(PageBreak())
+    el.append(Paragraph("Complete findings", h2))
+    el.append(Paragraph("Every record still inside your 24-month scoring window. Repeated entries in the public "
+                        "data are collapsed into one line.", t3s))
+
+    rows = [["Date", "Violation", "BASIC", "Sev.", "Our read", "Evidence to check"]]
     vstyles = []
-    for i, f in enumerate(findings[:28], 1):
+    actionable = [f for f in findings if f["priority"] <= 5]
+    monitored = len(findings) - len(actionable)
+    shown = actionable[:30]
+    for i, f in enumerate(shown, 1):
         if f["priority"] <= 2:
             bg, fg = "#dcfce7", "#14532d"
-        elif f["priority"] <= 4:
+        elif f["priority"] <= 5:
             bg, fg = "#fef9c3", "#713f12"
         else:
             bg, fg = "#eef1f5", "#334155"
         vstyles.append(("BACKGROUND", (4, i), (4, i), colors.HexColor(bg)))
         vstyles.append(("TEXTCOLOR", (4, i), (4, i), colors.HexColor(fg)))
         vcell = ParagraphStyle("v{}".format(i), parent=cellb, textColor=colors.HexColor(fg))
+        desc_small = "<font size=6.5 color='#8494a5'>{}{}</font>".format(
+            f["desc"], " (OOS)" if f["oos"] else "")
         rows.append([Paragraph(f["date"], cell),
-                     Paragraph(f["desc"] + (" <b>(OOS)</b>" if f["oos"] else ""), cell),
+                     Paragraph("<b>{}</b><br/>{}".format(f["title"], desc_small), cell),
                      Paragraph(short_basic(f["basic"]), cell),
                      str(f["severity"]),
                      Paragraph(f["verdict"], vcell),
                      Paragraph(f["evidence"], cell)])
-    t = Table(rows, colWidths=[0.72 * inch, 2.05 * inch, 0.95 * inch, 0.38 * inch, 1.4 * inch, 1.7 * inch],
+    t = Table(rows, colWidths=[0.72 * inch, 2.15 * inch, 0.9 * inch, 0.38 * inch, 1.45 * inch, 1.6 * inch],
               repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f3864")),
@@ -640,9 +673,14 @@ def _render_pdf(lead, findings, summary, fetched):
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f8fb")]),
     ] + vstyles))
     el.append(t)
-    if len(findings) > 28:
-        el.append(Paragraph("...plus {} more records — full list reviewed in your paid audit.".format(
-            len(findings) - 28), meta))
+    extra = []
+    if len(actionable) > len(shown):
+        extra.append("{} more flagged records".format(len(actionable) - len(shown)))
+    if monitored:
+        extra.append("{} lower-priority records we'd monitor".format(monitored))
+    if extra:
+        el.append(Paragraph("Not shown above: " + " and ".join(extra) +
+                            " — all reviewed in your paid audit.", meta))
     el.append(Spacer(1, 14))
     el.append(Paragraph("<b>Next step — Founding Carrier Record Rescue ($500 flat):</b> we review your full 24-month "
                         "record against your own evidence (ELD, dashcam, citations, court outcomes), prepare the "

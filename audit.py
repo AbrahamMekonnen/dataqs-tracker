@@ -46,54 +46,109 @@ def fetch_history(dot_number, con):
     return viols, insps, fetched
 
 
+_TITLE_KEYWORDS = [
+    ("speeding", "Speeding"),
+    ("seat belt", "Seat belt not used"),
+    ("medical", "Medical certificate issue"),
+    ("record of duty status", "Logbook (HOS) issue"),
+    ("rods", "Logbook (HOS) issue"),
+    ("hours of service", "Hours-of-service issue"),
+    ("logbook", "Logbook (HOS) issue"),
+    ("lane restriction", "Lane restriction"),
+    ("traffic control device", "Failed to obey traffic control"),
+    ("follow", "Following too closely"),
+    ("power steering", "Steering issue"),
+    ("steering", "Steering issue"),
+    ("turn signal", "Turn-signal defect"),
+    ("stop lamp", "Stop-lamp defect"),
+    ("marker lamp", "Marker-lamp defect"),
+    ("headlamp", "Headlamp defect"),
+    ("lighting", "Lighting defect"),
+    ("tire", "Tire issue"),
+    ("brake", "Brake issue"),
+    ("suspension", "Suspension issue"),
+    ("cargo", "Cargo securement"),
+    ("fire extinguisher", "Fire extinguisher"),
+    ("placard", "Placarding issue"),
+    ("mud", "Mudflap issue"),
+    ("wheel", "Wheel issue"),
+    ("periodic inspection", "Periodic inspection missing"),
+    ("cdl", "License / CDL issue"),
+    ("license", "License / CDL issue"),
+    ("restriction", "License restriction"),
+    ("drug", "Controlled-substance item"),
+    ("alcohol", "Alcohol item"),
+    ("move over", "Move-over law"),
+    ("emergency equipment", "Emergency equipment"),
+    ("inspection report", "Inspection report item"),
+]
+
+
+def short_title(section, group):
+    """Plain-English one-liner from the long government description."""
+    s = (section or group or "").lower()
+    for kw, title in _TITLE_KEYWORDS:
+        if kw in s:
+            return title
+    base = (section or group or "Violation").split(" - ", 1)[-1]
+    return (base[:38] + "…") if len(base) > 40 else base
+
+
 def analyze(viols, insps, alert_basics):
-    """Rule-based challengeability analysis. Returns findings + summary."""
+    """Rule-based challengeability analysis. Returns findings + summary.
+
+    Repeated (code, date, unit) rows in the public data are collapsed into one
+    finding with a count, so the report never looks padded with duplicates.
+    """
     now = datetime.now()
     alert_set = set((alert_basics or "").split("|"))
-    # map SMS file's basic names to lead-list alert names
-    basic_map = {"Unsafe Driving": "UnsafeDriving", "HOS Compliance": "HOS",
+    basic_map = {"Unsafe Driving": "UnsafeDriving", "Hours-of-Service Compliance": "HOS",
                  "Driver Fitness": "DriverFitness",
                  "Controlled Substances/Alcohol": "DrugsAlcohol",
                  "Vehicle Maintenance": "VehicleMaint"}
 
-    # detect possible duplicates: same code + same date + same unit (tractor vs
-    # trailer can legitimately share a code on one inspection, so unit matters)
-    seen = {}
+    # group identical rows (same code + date + unit)
+    groups = {}
+    order = []
     for v in viols:
         key = (v.get("viol_code"), v.get("insp_date"), v.get("viol_unit"))
-        seen[key] = seen.get(key, 0) + 1
+        if key not in groups:
+            groups[key] = {"v": v, "count": 0}
+            order.append(key)
+        groups[key]["count"] += 1
 
     findings = []
     basic_severity = {}
-    for v in viols:
+    total_in_window = 0
+    for key in order:
+        v = groups[key]["v"]
+        count = groups[key]["count"]
         d = _parse_date(v.get("insp_date", ""))
         # government data embeds soft hyphens (­) in some category names
         basic = (v.get("basic_desc") or "Other").replace("­", "")
         sev = int(float(v.get("severity_weight", 0) or 0))
         oos = str(v.get("oos_indicator", "false")).lower() == "true"
         in_alert = basic_map.get(basic, basic) in alert_set
-        basic_severity[basic] = basic_severity.get(basic, 0) + sev
         rolloff = d + timedelta(days=730) if d else None
         days_left = (rolloff - now).days if rolloff else None
         if days_left is not None and days_left < 0:
             continue  # already outside the 24-month scoring window
-
-        key = (v.get("viol_code"), v.get("insp_date"), v.get("viol_unit"))
-        is_dup = seen.get(key, 0) > 1
+        basic_severity[basic] = basic_severity.get(basic, 0) + sev
+        total_in_window += count
         section = v.get("section_desc", "") or ""
         is_ticket_shaped = "State/Local Laws" in section or basic == "Unsafe Driving"
 
-        if is_dup:
-            verdict, priority = "VERIFY - repeated entry in public data", 1
-            evidence = "Compare both entries against the full inspection report before treating as a duplicate"
-        elif is_ticket_shaped:
-            verdict, priority = "POSSIBLE CHALLENGE - if citation was dismissed or amended", 2
+        if is_ticket_shaped:
+            verdict, priority = "POSSIBLE CHALLENGE - if the citation was dismissed or amended", 1
             evidence = "Court disposition / citation outcome; ELD + dashcam for that day"
+        elif count > 1:
+            verdict, priority = "VERIFY - appears {}x on this date".format(count), 3
+            evidence = "Confirm on the full inspection report whether one event was recorded more than once"
         elif oos:
-            verdict, priority = "REVIEW - out-of-service item", 3
+            verdict, priority = "REVIEW - out-of-service item", 4
             evidence = "Inspection report accuracy check; repair invoices; photos"
         elif sev >= 7 and in_alert:
-            verdict, priority = "REVIEW - high-severity item", 4
+            verdict, priority = "REVIEW - high-severity item", 5
             evidence = "ELD logs, dashcam, maintenance records for that date"
         elif days_left is not None and days_left <= 90:
             verdict, priority = "AGES OFF SOON", 8
@@ -106,10 +161,12 @@ def analyze(viols, insps, alert_basics):
             "date": d.strftime("%b %d, %Y") if d else v.get("insp_date", "?"),
             "sort_date": d or now,
             "basic": basic,
+            "title": short_title(section, v.get("group_desc", "")),
             "desc": section or v.get("group_desc", ""),
             "code": v.get("viol_code", ""),
             "severity": sev,
             "oos": oos,
+            "count": count,
             "in_alert": in_alert,
             "verdict": verdict,
             "priority": priority,
@@ -119,13 +176,15 @@ def analyze(viols, insps, alert_basics):
 
     findings.sort(key=lambda f: (f["priority"], -f["severity"]))
     n_challenge = sum(1 for f in findings if f["priority"] <= 2)
-    n_investigate = sum(1 for f in findings if f["priority"] in (3, 4))
+    n_investigate = sum(1 for f in findings if f["priority"] in (3, 4, 5))
     alert_basic_names = [b for b in basic_severity
                          if basic_map.get(b, b) in alert_set]
     summary = {
-        "total_viols": len(findings),
+        "total_viols": total_in_window,
+        "n_records": len(findings),
         "n_challenge": n_challenge,
         "n_investigate": n_investigate,
+        "top3": findings[:3],
         "n_inspections": len(insps),
         "basic_severity": basic_severity,
         "alert_basics": alert_basic_names,

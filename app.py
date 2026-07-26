@@ -23,13 +23,14 @@ os.makedirs(PDF_DIR, exist_ok=True)
 if not os.path.exists(DB):
     import seed_db  # noqa: F401  (runs the seed as an import side effect)
 
-# light migration: add the email column to older databases
+# light migration: add newer columns to older databases
 _c = sqlite3.connect(DB)
-try:
-    _c.execute("ALTER TABLE leads ADD COLUMN email TEXT")
-    _c.commit()
-except sqlite3.OperationalError:
-    pass
+for _col in ("email", "contact_name"):
+    try:
+        _c.execute("ALTER TABLE leads ADD COLUMN {} TEXT".format(_col))
+        _c.commit()
+    except sqlite3.OperationalError:
+        pass
 _c.close()
 
 # email sending config: fill in the blanks in email_config.json (or set the
@@ -62,9 +63,9 @@ print("[startup] email mode:", "Brevo HTTPS API" if _ec.get("api_key")
             else "NOT CONFIGURED"), flush=True)
 
 
-RECOMMENDED_TEMPLATE = """Subject: [COMPANY] - CSA record audit (DOT [DOT])
+RECOMMENDED_TEMPLATE = """Subject: [COMPANY] CSA record audit - DOT [DOT]
 
-Hi,
+Hi [FIRST_NAME],
 
 Good talking with you. As promised, I attached the free audit of [COMPANY]'s federal safety record, DOT [DOT].
 
@@ -75,9 +76,11 @@ Here's what stood out:
 
 The attached audit shows which records appear worth reviewing and what evidence could support a DataQs challenge.
 
-The Founding Carrier Record Rescue is $500 flat. That includes a complete review of the 24-month record, identification of the strongest supportable case, preparation of the first challenge package, your approval before submission, filing with your authorization, and tracking through the written decision.
+The Founding Carrier Record Rescue is $500 flat. That includes a complete review of the 24-month record, identification of the strongest supportable case, preparation of the first challenge package, your approval before submission, submission with your authorization, and tracking through the written decision.
 
-[TOP_QUESTION]Reply here or call/text me at [MY_PHONE] with any questions.
+[TOP_QUESTION]
+
+Reply here or call/text me at [MY_PHONE].
 
 [MY_NAME]
 CSA Record Rescue
@@ -159,7 +162,7 @@ STATUSES = ["New", "Researching", "Audit Built", "Called - No Answer", "Called -
             "Audit Emailed", "In Conversation", "Paid Audit ($500)", "Customer",
             "Not Interested", "Bad Fit", "Invalid Phone"]
 PRIORITIES = ["", "A - hot", "B - warm", "C - later"]
-EDITABLE = {"status", "priority", "first_contact", "last_contact", "audit_sent", "outcome", "next_step", "notes", "email"}
+EDITABLE = {"status", "priority", "first_contact", "last_contact", "audit_sent", "outcome", "next_step", "notes", "email", "contact_name"}
 
 # ---------------------------------------------------------------- tracker page
 PAGE = """<!doctype html>
@@ -206,7 +209,7 @@ PAGE = """<!doctype html>
 <div class="wrap"><table id="t">
 <thead><tr>
  <th>DOT #</th><th>Company</th><th>City</th><th>ST</th><th>Phone</th><th>Trucks</th>
- <th>Alert BASICs</th><th>Insp.</th><th>SMS</th><th>Audit</th><th>Email</th><th>✉</th><th>Status</th><th>Priority</th>
+ <th>Alert BASICs</th><th>Insp.</th><th>SMS</th><th>Audit</th><th>Contact</th><th>Email</th><th>✉</th><th>Status</th><th>Priority</th>
  <th>First contact</th><th>Last contact</th><th>Audit sent</th><th>Outcome</th><th>Next step</th><th>Notes</th>
 </tr></thead><tbody>
 {% for r in rows %}
@@ -219,6 +222,7 @@ PAGE = """<!doctype html>
  <td>{{r['inspections']}}</td>
  <td><a href="{{r['sms_profile']}}" target="_blank">open</a></td>
  <td><a class="abtn" href="/audit/{{r['id']}}/{{r['slug']}}" target="_blank">audit</a></td>
+ <td contenteditable onblur="save(this,'contact_name')" style="min-width:80px">{{r['contact_name'] or ''}}</td>
  <td contenteditable onblur="save(this,'email')" class="mail" style="min-width:150px">{{r['email'] or ''}}</td>
  <td><a class="abtn sendbtn" href="#" onclick="return sendAudit(this)">send</a></td>
  <td><select class="cell" onchange="save(this,'status')">
@@ -733,20 +737,27 @@ def send_audit(lead_id):
     with open(TEMPLATE_FILE, encoding="utf-8") as f:
         tpl = f.read()
     alerts = ", ".join(summary["alert_basics"]) or "multiple categories"
-    # a specific, conversation-starting question anchored to the top citation
+    # a specific, one-sentence, easy-to-answer question anchored to a real record
     top_q = ""
-    for f in findings:
-        if f["priority"] == 1:  # a possible-challenge citation
-            top_q = ("One quick question to get started: was the {} {} citation dismissed or "
-                     "amended in court?\n\n").format(f["date"], f["title"].lower())
-            break
+    top_challenge = next((f for f in findings if f["priority"] == 1), None)
+    top_dup = next((f for f in findings if f["priority"] == 3), None)
+    if top_challenge:
+        top_q = "One quick question to get started: was the {} {} citation dismissed, reduced, or amended in court?".format(
+            top_challenge["date"], top_challenge["title"].lower())
+    elif top_dup:
+        top_q = "One quick question to get started: do you still have the inspection report from the {} {} inspection?".format(
+            top_dup["date"], top_dup["title"].lower())
+    first_name = (lead["contact_name"] or "there").strip() or "there"
     for token, val in [("[COMPANY]", lead["company"]), ("[DOT]", lead["dot_number"]),
+                       ("[FIRST_NAME]", first_name),
                        ("[TOTAL]", str(summary["total_viols"])),
                        ("[CHALLENGE]", str(summary["n_challenge"])),
                        ("[ALERTS]", alerts), ("[TOP_QUESTION]", top_q),
                        ("[MY_NAME]", cfg.get("my_name", "")),
                        ("[MY_PHONE]", cfg.get("my_phone", ""))]:
         tpl = tpl.replace(token, val)
+    import re as _re
+    tpl = _re.sub(r"\n{3,}", "\n\n", tpl)  # collapse blank lines if a token was empty
     lines = tpl.strip().splitlines()
     subject = lines[0].replace("Subject:", "").strip()
     body = "\n".join(lines[1:]).strip()
@@ -824,7 +835,7 @@ button{margin-top:10px;padding:9px 20px;background:#16a34a;color:#fff;border:non
 a{color:#0563c1}.saved{color:#16a34a;font-weight:600;margin-left:10px}</style></head><body>
 <h2>Email template</h2>
 <div class="sub">First line is the subject. These auto-fill per carrier:
-<span class="tok">[COMPANY]</span><span class="tok">[DOT]</span><span class="tok">[TOTAL]</span>
+<span class="tok">[FIRST_NAME]</span><span class="tok">[COMPANY]</span><span class="tok">[DOT]</span><span class="tok">[TOTAL]</span>
 <span class="tok">[CHALLENGE]</span><span class="tok">[ALERTS]</span><span class="tok">[TOP_QUESTION]</span>
 <span class="tok">[MY_NAME]</span><span class="tok">[MY_PHONE]</span></div>
 <form method="post"><textarea name="template">{{tpl}}</textarea><br>

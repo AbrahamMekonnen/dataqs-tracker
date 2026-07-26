@@ -705,10 +705,10 @@ COSTS_PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <div class="sub">First 5 carriers = paid market research. Log time per challenge; it prices itself. &middot; <a href="/">← tracker</a></div>
 
 <div class="set">
-  <div><label>Replacement rate $/hr</label><input id="rate" type="number" step="1"></div>
-  <div><label>Target gross margin %</label><input id="margin" type="number" step="1"></div>
-  <div><label>Package price $</label><input id="package_price" type="number" step="10"></div>
-  <div><label>Challenges / package</label><input id="included" type="number" step="1"></div>
+  <div><label>Replacement rate $/hr</label><input id="rate" type="number" step="1" oninput="saveSetting('rate',this)"></div>
+  <div><label>Target gross margin %</label><input id="margin" type="number" step="1" oninput="saveSetting('margin',this)"></div>
+  <div><label>Package price $</label><input id="package_price" type="number" step="10" oninput="saveSetting('package_price',this)"></div>
+  <div><label>Challenges / package</label><input id="included" type="number" step="1" oninput="saveSetting('included',this)"></div>
   <div style="font-size:11px;color:#5b6b7a;max-width:240px">Use a real hourly rate — what you'd pay someone competent. Never $0.</div>
 </div>
 
@@ -742,7 +742,7 @@ function save(id,field,value){
   render();
 }
 function flash(){ let s=document.getElementById('saved'); s.style.opacity=1; setTimeout(()=>s.style.opacity=0,700); }
-function saveSetting(k,el){ S[k]=el.value; fetch('/costs/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({[k]:el.value})}).then(()=>flash()); render(); }
+function saveSetting(k,el){ let v = k=='margin' ? num(el.value)/100 : num(el.value); S[k]=v; fetch('/costs/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({[k]:v})}).then(()=>flash()); render(); }
 function addRow(){ fetch('/costs/add',{method:'POST'}).then(r=>r.json()).then(j=>{ DATA.push({id:j.id}); render(); }); }
 function delRow(id){ if(!confirm('Delete this challenge row?'))return; fetch('/costs/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(()=>{ DATA=DATA.filter(r=>r.id!=id); render(); }); }
 

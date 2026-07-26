@@ -123,13 +123,31 @@ padding:8px 22px;font-size:14px;background:#1f3864;color:#fff;border:none;border
 <button>Enter</button>{% if err %}<div class="err">wrong PIN</div>{% endif %}</form></body></html>"""
 
 
+PUBLIC_HOSTS = {"csarecordrescue.com", "www.csarecordrescue.com"}
+
+
+def _host():
+    return request.host.split(":")[0].lower()
+
+
 @app.before_request
 def gate():
-    if request.endpoint in ("login", "static"):
+    if request.endpoint in ("login", "static", "landing"):
+        return None
+    # the public marketing page on the root domain needs no PIN
+    if _host() in PUBLIC_HOSTS and request.path == "/":
         return None
     if not session.get("ok"):
         return redirect("/login")
     return None
+
+
+@app.route("/site")
+def landing():
+    cfg = email_cfg()
+    return render_template_string(
+        LANDING_PAGE, phone=cfg.get("my_phone") or "408-647-5890",
+        email="abraham@csarecordrescue.com", name=cfg.get("my_name") or "Abraham")
 
 
 _attempts = {}  # ip -> [count, first_attempt_ts]
@@ -407,6 +425,153 @@ solely by FMCSA and state reviewing agencies; supporting evidence from your file
 </div></body></html>"""
 
 
+LANDING_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSA Record Rescue — DataQs challenge help for small carriers</title>
+<meta name="description" content="We review your public federal safety record, identify records that may be inaccurate or challengeable, prepare the DataQs package, and track it through the decision. Independent service.">
+<style>
+ :root{--navy:#1f3864;--ink:#1a2733;--muted:#5b6b7a;--line:#dde4ec;--bg:#f5f7fa}
+ *{box-sizing:border-box}
+ body{margin:0;font-family:Segoe UI,Arial,sans-serif;color:var(--ink);background:#fff;line-height:1.5}
+ .wrap{max-width:860px;margin:0 auto;padding:0 22px}
+ header{background:var(--navy);color:#fff;padding:14px 0}
+ header .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+ .brand{font-weight:700;font-size:18px;letter-spacing:.2px}
+ .brand small{display:block;font-weight:400;font-size:11.5px;opacity:.8}
+ .htel{color:#fff;text-decoration:none;font-size:14px;border:1px solid rgba(255,255,255,.5);padding:7px 13px;border-radius:8px;white-space:nowrap}
+ .hero{background:linear-gradient(180deg,#f6f8fb,#fff);border-bottom:1px solid var(--line);padding:44px 0}
+ h1{font-size:30px;line-height:1.2;margin:0 0 12px}
+ .sub{font-size:17px;color:var(--muted);margin:0 0 22px}
+ .btn{display:inline-block;background:#16a34a;color:#fff;text-decoration:none;font-size:16px;font-weight:600;padding:12px 22px;border-radius:10px}
+ .btn.navy{background:var(--navy)}
+ section{padding:34px 0;border-bottom:1px solid var(--line)}
+ h2{font-size:21px;color:var(--navy);margin:0 0 14px}
+ .steps{list-style:none;padding:0;margin:0;counter-reset:s}
+ .steps li{counter-increment:s;position:relative;padding:10px 0 10px 44px;font-size:16px;border-bottom:1px solid #eef1f5}
+ .steps li:before{content:counter(s);position:absolute;left:0;top:8px;width:28px;height:28px;background:var(--navy);color:#fff;border-radius:50%;text-align:center;line-height:28px;font-weight:700;font-size:14px}
+ .offer{background:#f6f8fb;border:1px solid var(--line);border-radius:12px;padding:24px}
+ .price{font-size:24px;font-weight:800;color:var(--navy)}
+ .offer ul{margin:12px 0 0;padding-left:20px}
+ .offer li{margin:5px 0}
+ .cols{display:flex;gap:22px;flex-wrap:wrap}
+ .card{flex:1;min-width:240px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+ .avatar{width:64px;height:64px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;float:left;margin:0 14px 6px 0}
+ .contact a{color:#0563c1}
+ .disc{font-size:12.5px;color:var(--muted)}
+ .disc li{margin:3px 0}
+ /* sample audit mock */
+ .sample{border:1px solid var(--line);border-radius:12px;overflow:hidden;filter:saturate(.95)}
+ .sample .top{background:#fff;padding:16px 18px;border-bottom:1px solid var(--line)}
+ .sname{font-weight:700;font-size:16px}
+ .blur{filter:blur(4px);user-select:none}
+ .stat4{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+ .st{flex:1;min-width:120px;background:#f6f8fb;border:1px solid #e2e8f0;border-radius:8px;padding:8px;text-align:center}
+ .st b{display:block;font-size:20px}.st span{font-size:11px;color:var(--muted)}
+ .srow{display:grid;grid-template-columns:70px 1fr 130px;gap:8px;padding:8px 18px;border-top:1px solid #eef1f5;font-size:12.5px;align-items:center}
+ .tag{font-weight:600;font-size:11px;padding:1px 7px;border-radius:9px;white-space:nowrap}
+ .g{background:#dcfce7;color:#14532d}.y{background:#fef9c3;color:#713f12}
+ .cap{font-size:12px;color:var(--muted);margin-top:8px;text-align:center}
+ footer{padding:26px 0;color:var(--muted);font-size:12.5px}
+ @media(max-width:600px){h1{font-size:25px}.srow{grid-template-columns:60px 1fr 96px}}
+</style></head><body>
+
+<header><div class="wrap">
+  <div class="brand">CSA Record Rescue<small>DataQs record review &amp; challenge support</small></div>
+  <a class="htel" href="tel:{{phone}}">Call or text {{phone}}</a>
+</div></header>
+
+<div class="hero"><div class="wrap">
+  <h1>Incorrect violations can cost carriers loads, insurance money, and time.</h1>
+  <p class="sub">We help small carriers challenge federal safety records that shouldn't be there — using the official FMCSA DataQs process.</p>
+  <a class="btn" href="tel:{{phone}}">Call or text Abraham at {{phone}}</a>
+</div></div>
+
+<section><div class="wrap">
+  <h2>What we do</h2>
+  <p>CSA Record Rescue reviews your public federal safety record, identifies records that may be inaccurate or supportably challengeable, collects the necessary evidence, prepares the DataQs package, gets your approval, and tracks the case through the written decision.</p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li>We review your public federal record</li>
+    <li>We identify possible challenge candidates</li>
+    <li>We check your supporting evidence</li>
+    <li>You approve the filing</li>
+    <li>We submit and track the decision</li>
+  </ol>
+</div></section>
+
+<section><div class="wrap">
+  <h2>The offer</h2>
+  <div class="offer">
+    <div class="price">Founding Carrier Record Rescue — $500 flat</div>
+    <ul>
+      <li>Full 24-month record review</li>
+      <li>Strongest supportable case identified</li>
+      <li>First complete DataQs challenge package</li>
+      <li>Your approval before submission</li>
+      <li>Deadline and decision tracking</li>
+    </ul>
+    <p style="margin:14px 0 0"><a class="btn navy" href="tel:{{phone}}">Get started — call or text {{phone}}</a></p>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Sample record audit</h2>
+  <div class="sample">
+    <div class="top">
+      <div class="sname blur">SAMPLE CARRIER LLC</div>
+      <div class="disc blur">USDOT 0000000 · CITY, ST</div>
+      <div class="stat4">
+        <div class="st"><b>53</b><span>violation entries</span></div>
+        <div class="st"><b>10</b><span>challenge candidates</span></div>
+        <div class="st"><b>13</b><span>verify / review</span></div>
+        <div class="st"><b>35</b><span>inspections</span></div>
+      </div>
+    </div>
+    <div class="srow"><span>Jun 13, 2025</span><span>Speeding</span><span class="tag g">POSSIBLE CHALLENGE</span></div>
+    <div class="srow"><span>May 22, 2026</span><span>Cargo securement</span><span class="tag y">VERIFY — repeated entry</span></div>
+    <div class="srow"><span>Mar 04, 2026</span><span>License / CDL issue</span><span class="tag y">REVIEW — out-of-service</span></div>
+  </div>
+  <div class="cap">Sample CSA Record Error Audit — carrier details blurred. Every audit is prepared from your own public federal record.</div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Who you're working with</h2>
+  <div class="cols">
+    <div class="card contact">
+      <div class="avatar">A</div>
+      <b>Prepared and managed by {{name}}</b><br>
+      <span class="disc">CSA record reviews &amp; DataQs filing support</span><br><br>
+      📞 <a href="tel:{{phone}}">{{phone}}</a><br>
+      ✉ <a href="mailto:{{email}}">{{email}}</a>
+    </div>
+    <div class="card">
+      <ul class="disc" style="margin:0;padding-left:18px">
+        <li>Independent service — not affiliated with FMCSA or any state agency.</li>
+        <li>Correction decisions are made by the reviewing government agency.</li>
+        <li>We do not guarantee removal of any record.</li>
+        <li>Prepared from public FMCSA SMS/MCMIS data; not legal advice.</li>
+      </ul>
+    </div>
+  </div>
+</div></section>
+
+<section style="border:none"><div class="wrap" style="text-align:center">
+  <h2 style="border:none">Want to know whether anything on your record is worth challenging?</h2>
+  <a class="btn" href="tel:{{phone}}">Call or text Abraham at {{phone}}</a>
+</div></section>
+
+<footer><div class="wrap">
+  CSA Record Rescue · Independent service, not affiliated with FMCSA or any state agency ·
+  <a href="mailto:{{email}}" style="color:var(--muted)">{{email}}</a>
+</div></footer>
+
+</body></html>"""
+
+
 def db():
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
@@ -428,6 +593,9 @@ def prettydate(fetched):
 
 @app.route("/")
 def index():
+    # root marketing domain shows the public one-pager; everywhere else = tracker
+    if _host() in PUBLIC_HOSTS:
+        return landing()
     con = db()
     rows = [dict(r) for r in con.execute(
         "SELECT * FROM leads ORDER BY n_alerts DESC, inspections DESC")]

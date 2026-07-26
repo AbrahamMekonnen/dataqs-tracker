@@ -19,42 +19,53 @@ BASIC_CONSEQUENCE = {
 }
 
 
-def evidence_for(section, group, is_dup):
-    """Evidence recommendation matched to the violation TYPE, not the verdict.
-    (Per review: a CDL/medical item must not ask for 'repair invoices & photos'.)"""
+def classify_kind(section, group):
+    """One classifier used for BOTH the verdict and the evidence, so they never
+    disagree. 'moving' is checked first because traffic-control descriptions
+    literally contain the word 'light' ('signal sign light'), which must not be
+    mistaken for an equipment-lighting defect."""
     s = (section or group or "").lower()
-    if is_dup:
-        return "Full inspection report — confirm whether one event was recorded more than once"
-    # moving / citation-type violations
     if any(k in s for k in ("speeding", "seat belt", "traffic control", "lane restriction",
                             "follow", "move over", "stop sign", "yield", "improper turn",
-                            "reckless", "texting", "hand-held", "hand held")):
-        return "Court disposition or citation outcome; ELD logs and dashcam for that day; the inspection report"
-    # medical certificate
+                            "reckless", "texting", "hand-held", "hand held", "failure to obey")):
+        return "moving"
     if "medical" in s:
-        return ("Full inspection report; valid medical certificate and examiner documentation for that date; "
-                "state self-certification record")
-    # drugs / alcohol (check before generic 'operate a cmv' license match)
+        return "medical"
     if any(k in s for k in ("drug", "alcohol", "controlled subst")):
-        return "Full inspection report; documentation and context of the finding; any related test or court records"
-    # license / CDL / restriction
-    if any(k in s for k in ("cdl", "license", "restriction", "operate a cmv", "endorsement")):
-        return ("Full inspection report; copy of the CDL showing class/endorsements/restrictions; state "
-                "motor-vehicle record showing valid status on the inspection date")
-    # hours of service / logbook
-    if any(k in s for k in ("record of duty", "rods", "hours of service", "duty status", "logbook", "hos")):
-        return "ELD logs and supporting duty records for that period; the inspection report"
-    # hazmat / placarding
+        return "drugs"
+    if any(k in s for k in ("cdl", "license", "restriction", "endorsement")) or "operate a cmv" in s:
+        return "license"
+    if any(k in s for k in ("record of duty", "rods", "hours of service", "duty status", "logbook")):
+        return "hos"
     if any(k in s for k in ("placard", "hazmat", "hazardous", "shipping paper")):
-        return "Full inspection report; dated photos of placarding; shipping papers for the load"
-    # vehicle / equipment defects
-    if any(k in s for k in ("brake", "tire", "light", "lamp", "suspension", "cargo", "wheel", "mud",
-                            "steering", "fire extinguish", "emergency equipment", "coupling", "frame",
-                            "windshield", "wiper", "horn", "mirror", "exhaust", "fuel", "leak", "hose",
-                            "load secure", "flap")):
-        return ("Full inspection report; maintenance/repair records and dated photos of the item; proof of "
-                "pre- and post-trip inspection")
-    return "Full inspection report; documentation from your files showing the record is inaccurate"
+        return "hazmat"
+    if any(k in s for k in ("brake", "tire", "lamp", "lighting", "suspension", "cargo", "wheel", "mud",
+                            "flap", "steering", "fire extinguish", "emergency equipment", "coupling",
+                            "frame", "windshield", "wiper", "horn", "mirror", "exhaust", "fuel", "leak",
+                            "hose", "load secure")):
+        return "equipment"
+    return "other"
+
+
+_EVIDENCE_BY_KIND = {
+    "moving": "Court disposition or citation outcome; ELD logs and dashcam for that day; the inspection report",
+    "medical": ("Full inspection report; valid medical certificate and examiner documentation for that date; "
+                "state self-certification record"),
+    "drugs": "Full inspection report; documentation and context of the finding; any related test or court records",
+    "license": ("Full inspection report; copy of the CDL showing class/endorsements/restrictions; state "
+                "motor-vehicle record showing valid status on the inspection date"),
+    "hos": "ELD logs and supporting duty records for that period; the inspection report",
+    "hazmat": "Full inspection report; dated photos of placarding; shipping papers for the load",
+    "equipment": ("Full inspection report; maintenance/repair records and dated photos of the item; driver "
+                  "inspection records from that date, if available"),
+    "other": "Full inspection report; documentation from your files showing the record is inaccurate",
+}
+
+
+def evidence_for(section, group, is_dup):
+    if is_dup:
+        return "Full inspection report — confirm whether one event was recorded more than once"
+    return _EVIDENCE_BY_KIND[classify_kind(section, group)]
 
 
 def _parse_date(s):
@@ -174,20 +185,16 @@ def analyze(viols, insps, alert_basics):
         basic_severity[basic] = basic_severity.get(basic, 0) + sev
         total_in_window += count
         section = v.get("section_desc", "") or ""
-        is_ticket_shaped = "State/Local Laws" in section or basic == "Unsafe Driving"
+        kind = classify_kind(section, v.get("group_desc", ""))
 
-        is_equipment = any(k in section.lower() for k in (
-            "wheel", "mud", "flap", "brake", "tire", "light", "lamp", "cargo", "load secure"))
         if count > 1:
             verdict, priority = "VERIFY - appears {}x on this date".format(count), 3
-        elif is_ticket_shaped and not is_equipment:
+        elif kind == "moving":
             verdict, priority = "POSSIBLE CHALLENGE - if the citation was dismissed or amended", 1
         elif oos:
             verdict, priority = "REVIEW - out-of-service item", 4
         elif sev >= 7 and in_alert:
             verdict, priority = "REVIEW - high-severity item", 5
-        elif is_ticket_shaped:  # equipment item cited under state/local law
-            verdict, priority = "REVIEW - verify the alleged defect", 4
         elif days_left is not None and days_left <= 90:
             verdict, priority = "AGES OFF SOON", 8
         else:

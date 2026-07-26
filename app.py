@@ -359,7 +359,7 @@ insurance underwriting, roadside-inspection exposure, and broker qualification. 
 duplicated, or eligible for review based on documentation in your files &mdash; but under the new DataQs rules
 (April 2026), a record only comes off if someone reviews it and files a supported challenge.</p>
 
-<div class="ctamini">Want us to verify these findings against your records? Call or text
+<div class="ctamini">Want to know which of these records is actually worth challenging? Call or text
 {{contact['my_name'] or 'us'}} at <b>{{contact['my_phone'] or '[phone]'}}</b> &mdash; Founding Carrier Record Rescue, $500 flat.</div>
 
 <h2>What we found on your record</h2>
@@ -503,8 +503,8 @@ def _render_pdf(lead, findings, summary, fetched):
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import inch
-    from reportlab.platypus import (PageBreak, Paragraph, SimpleDocTemplate,
-                                    Spacer, Table, TableStyle)
+    from reportlab.platypus import (KeepTogether, PageBreak, Paragraph,
+                                    SimpleDocTemplate, Spacer, Table, TableStyle)
 
     path = os.path.join(PDF_DIR, "audit_{}_{}.pdf".format(lead["dot_number"], lead["id"]))
     doc = SimpleDocTemplate(path, pagesize=letter, leftMargin=0.7 * inch,
@@ -596,8 +596,8 @@ def _render_pdf(lead, findings, summary, fetched):
         "duplicated, or eligible for review based on documentation in your files &mdash; but under the new DataQs rules "
         "(April 2026), a record only comes off if someone reviews it and files a supported challenge.", body))
     el.append(Spacer(1, 8))
-    ct = Table([[Paragraph("<b>Want us to verify these findings against your records?</b> Call or text {} at {} "
-                           "&mdash; Founding Carrier Record Rescue, $500 flat.".format(my_name, my_phone), ctamini)]],
+    ct = Table([[Paragraph("<b>Want to know which of these records is actually worth challenging?</b> Call or text {} "
+                           "at {} &mdash; Founding Carrier Record Rescue, $500 flat.".format(my_name, my_phone), ctamini)]],
                colWidths=[7.2 * inch])
     ct.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eff6ff")),
@@ -611,7 +611,7 @@ def _render_pdf(lead, findings, summary, fetched):
     # process graphic (how the service works, in one line)
     proc = Table([[Paragraph("<b>Public record found &nbsp;&rarr;&nbsp; Evidence checked &nbsp;&rarr;&nbsp; "
                              "You approve &nbsp;&rarr;&nbsp; DataQs filed &nbsp;&rarr;&nbsp; Decision tracked</b>",
-                             ParagraphStyle("proc", parent=body, fontSize=9.5, alignment=1))]],
+                             ParagraphStyle("proc", parent=body, fontSize=9, alignment=1))]],
                  colWidths=[7.2 * inch])
     proc.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f6f8fb")),
@@ -632,7 +632,7 @@ def _render_pdf(lead, findings, summary, fetched):
         el.append(Paragraph("Our read: {}. Evidence to check: {}.".format(
             f["verdict"], f["evidence"]), t3s))
 
-    el.append(PageBreak())
+    el.append(Spacer(1, 12))
     el.append(Paragraph("Flagged findings", h2))
     el.append(Paragraph("The records we'd act on first. Repeated entries in the public data are collapsed into "
                         "one line; lower-priority records are summarized at the end.", t3s))
@@ -641,7 +641,7 @@ def _render_pdf(lead, findings, summary, fetched):
     vstyles = []
     actionable = [f for f in findings if f["priority"] <= 5]
     monitored = len(findings) - len(actionable)
-    shown = actionable[:30]
+    shown = actionable[:20]
     for i, f in enumerate(shown, 1):
         if f["priority"] <= 2:
             bg, fg = "#dcfce7", "#14532d"
@@ -652,7 +652,7 @@ def _render_pdf(lead, findings, summary, fetched):
         vstyles.append(("BACKGROUND", (4, i), (4, i), colors.HexColor(bg)))
         vstyles.append(("TEXTCOLOR", (4, i), (4, i), colors.HexColor(fg)))
         vcell = ParagraphStyle("v{}".format(i), parent=cellb, textColor=colors.HexColor(fg))
-        desc_small = "<font size=6.5 color='#8494a5'>{}{}</font>".format(
+        desc_small = "<font size=6 color='#8494a5'>{}{}</font>".format(
             f["desc"], " (OOS)" if f["oos"] else "")
         rows.append([Paragraph(f["date"], cell),
                      Paragraph("<b>{}</b><br/>{}".format(f["title"], desc_small), cell),
@@ -671,6 +671,7 @@ def _render_pdf(lead, findings, summary, fetched):
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d8dfe8")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f8fb")]),
+        ("TOPPADDING", (0, 1), (-1, -1), 2), ("BOTTOMPADDING", (0, 1), (-1, -1), 2),
     ] + vstyles))
     el.append(t)
     extra = []
@@ -681,22 +682,25 @@ def _render_pdf(lead, findings, summary, fetched):
     if extra:
         el.append(Paragraph("Not shown above: " + " and ".join(extra) +
                             " — all reviewed in your paid audit.", meta))
-    el.append(Spacer(1, 14))
-    el.append(Paragraph("<b>Next step — Founding Carrier Record Rescue ($500 flat):</b> we review your full 24-month "
-                        "record against your evidence (ELD, dashcam, citations, court outcomes), identify the strongest "
-                        "supportable challenge, prepare your <b>first</b> complete DataQs challenge package, send it to "
-                        "you for approval, submit it with your authorization, and track it through the written decision. "
-                        "Founding price, first 10 carriers only. <b>Optional</b> continuous monitoring starts at $149/mo "
-                        "after the rescue. <b>Perfect Package Guarantee:</b> if we miss a filing deadline under our "
-                        "control, or omit evidence you submitted by the requested date, we refund your $500 service fee "
-                        "and prepare your next eligible challenge at no charge.", body))
-    el.append(Spacer(1, 6))
-    el.append(Paragraph("Call or text: {} &nbsp;&middot;&nbsp; Email: {}".format(my_phone, my_email), body))
-    el.append(Spacer(1, 12))
-    el.append(Paragraph("Independent service &mdash; not affiliated with FMCSA or any state agency. Prepared from public "
-                        "FMCSA SMS/MCMIS data; identifies records that may merit a DataQs Request for Data Review. Not "
-                        "legal advice. Correction decisions are made solely by FMCSA and state reviewing agencies; "
-                        "supporting evidence from your files determines what is actually filed.", small))
+    el.append(Spacer(1, 10))
+    # keep the whole offer + contact + disclaimer together on one page
+    el.append(KeepTogether([
+        Paragraph("<b>Next step — Founding Carrier Record Rescue ($500 flat):</b> we review your full 24-month "
+                  "record against your evidence (ELD, dashcam, citations, court outcomes), identify the strongest "
+                  "supportable challenge, prepare your <b>first</b> complete DataQs challenge package, send it to "
+                  "you for approval, submit it with your authorization, and track it through the written decision. "
+                  "Founding price, first 10 carriers only. <b>Optional</b> continuous monitoring starts at $149/mo "
+                  "after the rescue. <b>Perfect Package Guarantee:</b> if we miss a filing deadline under our "
+                  "control, or omit evidence you submitted by the requested date, we refund your $500 service fee "
+                  "and prepare your next eligible challenge at no charge.", body),
+        Spacer(1, 6),
+        Paragraph("Call or text: {} &nbsp;&middot;&nbsp; Email: {}".format(my_phone, my_email), body),
+        Spacer(1, 10),
+        Paragraph("Independent service &mdash; not affiliated with FMCSA or any state agency. Prepared from public "
+                  "FMCSA SMS/MCMIS data; identifies records that may merit a DataQs Request for Data Review. Not "
+                  "legal advice. Correction decisions are made solely by FMCSA and state reviewing agencies; "
+                  "supporting evidence from your files determines what is actually filed.", small),
+    ]))
     doc.build(el)
     return path
 

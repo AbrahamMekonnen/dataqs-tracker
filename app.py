@@ -313,7 +313,9 @@ AUDIT_PAGE = """<!doctype html>
  .sheet{max-width:860px;margin:24px auto;background:#fff;border:1px solid #d8dfe8;border-radius:10px;padding:34px 40px}
  h1{font-size:24px;margin:0}
  h2{font-size:16px;margin:26px 0 8px;color:#1f3864}
- .meta{color:#5b6b7a;font-size:12.5px;margin:6px 0 18px}
+ .subtitle{font-size:14px;color:#334155;margin:3px 0 10px}
+ .meta{color:#5b6b7a;font-size:12.5px;margin:6px 0 18px;line-height:1.5}
+ .ctamini{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;font-size:13.5px;margin:16px 0}
  .alertbox{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;font-size:14px;margin-bottom:6px}
  .statrow{display:flex;gap:12px;margin:14px 0}
  .stat{flex:1;background:#f6f8fb;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;text-align:center}
@@ -336,25 +338,29 @@ AUDIT_PAGE = """<!doctype html>
  @media print {.btnrow{display:none} body{background:#fff} .sheet{border:none;margin:0}}
 </style></head><body><div class="sheet">
 <h1>CSA Record Error Audit</h1>
-<div class="meta"><b>{{lead['company']}}</b> &middot; DOT # {{lead['dot_number']}} &middot; {{lead['city']}}, {{lead['state']}} &middot;
-prepared {{fetched}} from public FMCSA data</div>
+<div class="subtitle">Potentially incorrect records that may be affecting your carrier's safety profile</div>
+<div class="meta">Prepared for <b>{{lead['company']}}</b> (USDOT {{lead['dot_number']}} &middot; {{lead['city']}}, {{lead['state']}}) on {{prepared_date}}<br>
+Prepared by {{contact['my_name'] or 'CSA Record Rescue'}} &middot; CSA Record Rescue &middot; from public FMCSA data</div>
 
 {% for b in summary['alert_basics'] %}
-<div class="alertbox">⚠ Your record currently carries an <b>active federal alert flag in {{b}}</b> —
+<div class="alertbox">Your record currently carries an <b>active federal alert flag in {{b}}</b> —
 {{summary['consequences'][b]}}.</div>
 {% endfor %}
 
 <div class="statrow">
- <div class="stat"><b>{{summary['total_viols']}}</b><span>violations still in your 24-month scoring window</span></div>
- <div class="stat"><b>{{summary['n_challenge']}}</b><span>look challengeable right now</span></div>
- <div class="stat"><b>{{summary['n_investigate']}}</b><span>worth investigating with your records</span></div>
+ <div class="stat"><b>{{summary['total_viols']}}</b><span>violations in your 24-month scoring window</span></div>
+ <div class="stat"><b>{{summary['n_challenge']}}</b><span>flagged for evidence review</span></div>
+ <div class="stat"><b>{{summary['n_investigate']}}</b><span>records to check against your files</span></div>
  <div class="stat"><b>{{summary['n_inspections']}}</b><span>inspections on file</span></div>
 </div>
 
-<p style="font-size:14px">Every violation below is still counting against your CSA scores. Carriers with elevated
-scores lose an estimated 20&ndash;40% of available freight opportunities, pay more at every insurance renewal, and get
-inspected more often. Some of these records may not belong on your file &mdash; but under the new DataQs rules
-(April 2026), <b>they only come off if someone challenges them with the right evidence, before they do their damage.</b></p>
+<p style="font-size:14px">Each item below is still inside your 24-month scoring window. Elevated safety indicators may affect
+insurance underwriting, roadside-inspection exposure, and broker qualification. Some of these records may not belong on
+your file &mdash; but under the new DataQs rules (April 2026), a record only comes off if someone reviews it and files a
+supported challenge.</p>
+
+<div class="ctamini">Want us to verify these findings against your records? Call or text
+{{contact['my_name'] or 'us'}} at <b>{{contact['my_phone'] or '[phone]'}}</b> &mdash; Founding Carrier Record Rescue, $500 flat.</div>
 
 <h2>What we found on your record</h2>
 <table>
@@ -376,15 +382,14 @@ inspected more often. Some of these records may not belong on your file &mdash; 
 
 <div class="cta">
 <h2>What we'd do next — the Founding Carrier Record Rescue</h2>
-<p>We audit your full 24-month record against your own evidence (ELD, dashcam, tickets, court outcomes), build the
-strongest supportable DataQs challenge for every flagged record above, file it, and chase every deadline of the new
-21-day review process until you have a written answer.</p>
-<div class="price">$500 flat — full audit + your first challenge package</div>
+<p>We review your full 24-month record against your own evidence (ELD, dashcam, citations, court outcomes), prepare the
+strongest supportable DataQs challenge for each flagged record, <b>send it to you for approval, submit it with your
+authorization</b>, and track it through the written decision.</p>
+<div class="price">$500 flat — full review + your first challenge package</div>
 <div style="font-size:12.5px;margin-top:4px">Founding price, limited to our first 10 carriers. Then continuous monitoring from $149/mo — we watch your record and preserve evidence before it disappears.</div>
-<div class="guarantee"><b>Perfect Package Guarantee:</b> every challenge we submit includes the required factual/legal basis,
-your supporting documentation, and deadline tracking. If we miss a filing deadline or omit evidence you provided on time,
-that case is free and the next eligible one is on us.</div>
-<div style="margin-top:12px;font-size:13.5px">📞 [YOUR PHONE] &nbsp;&middot;&nbsp; ✉ [YOUR EMAIL]</div>
+<div class="guarantee"><b>Perfect Package Guarantee:</b> if we miss a filing deadline under our control, or omit evidence
+you submitted by the requested date, we refund your $500 service fee and prepare your next eligible challenge at no charge.</div>
+<div style="margin-top:12px;font-size:13.5px">📞 {{contact['my_phone'] or '[phone]'}} &nbsp;&middot;&nbsp; ✉ {{contact['smtp_user'] or '[email]'}}</div>
 </div>
 
 <div class="btnrow">
@@ -393,10 +398,9 @@ that case is free and the next eligible one is on us.</div>
  <a class="btn2" href="/">← back to tracker</a>
 </div>
 
-<div class="fine">Prepared from public FMCSA SMS/MCMIS data. This document identifies records that may merit a DataQs
-Request for Data Review; it is not legal advice, and correction decisions are made solely by FMCSA and state reviewing
-agencies. "Challengeable" reflects our reading of the public record only — supporting evidence from your files determines
-what is actually filed. Freight-opportunity estimate: industry analyses of broker carrier-screening practices.</div>
+<div class="fine">Independent service — not affiliated with FMCSA or any state agency. Prepared from public FMCSA SMS/MCMIS
+data; identifies records that may merit a DataQs Request for Data Review. Not legal advice. Correction decisions are made
+solely by FMCSA and state reviewing agencies; supporting evidence from your files determines what is actually filed.</div>
 </div></body></html>"""
 
 
@@ -409,6 +413,14 @@ def db():
 def slugify(s):
     import re
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-") or "carrier"
+
+
+def prettydate(fetched):
+    from datetime import datetime
+    try:
+        return datetime.strptime((fetched or "")[:10], "%Y-%m-%d").strftime("%B %d, %Y")
+    except Exception:
+        return fetched or ""
 
 
 @app.route("/")
@@ -467,7 +479,8 @@ def audit_page(lead_id, slug=None):
     if slug != want:  # keep URLs canonical and readable
         return redirect("/audit/{}/{}".format(lead_id, want))
     return render_template_string(AUDIT_PAGE, lead=lead, findings=findings,
-                                  summary=summary, fetched=fetched, slug=want)
+                                  summary=summary, fetched=fetched, slug=want,
+                                  contact=email_cfg(), prepared_date=prettydate(fetched))
 
 
 @app.route("/audit/<int:lead_id>/pdf")
@@ -527,10 +540,21 @@ def _render_pdf(lead, findings, summary, fetched):
             return "Vehicle Maint."
         return "".join(ch for ch in b if ord(ch) < 0x2000)
 
+    cfg = email_cfg()
+    my_name = cfg.get("my_name") or "CSA Record Rescue"
+    my_phone = cfg.get("my_phone") or "[phone]"
+    my_email = cfg.get("smtp_user") or "[email]"
+    subtitle = ParagraphStyle("sub", parent=ss["Normal"], fontSize=11,
+                              textColor=colors.HexColor("#334155"), spaceAfter=6)
+    ctamini = ParagraphStyle("ctamini", parent=body, fontSize=10, leading=13)
+
     el = []
     el.append(Paragraph("CSA Record Error Audit", h1))
-    el.append(Paragraph("{} — DOT # {} — {}, {} — prepared {} from public FMCSA data".format(
-        lead["company"], lead["dot_number"], lead["city"], lead["state"], fetched), meta))
+    el.append(Paragraph("Potentially incorrect records that may be affecting your carrier's safety profile", subtitle))
+    el.append(Paragraph("Prepared for <b>{}</b> (USDOT {} &middot; {}, {}) on {}<br/>Prepared by {} &middot; "
+                        "CSA Record Rescue &middot; from public FMCSA data".format(
+                            lead["company"], lead["dot_number"], lead["city"], lead["state"],
+                            prettydate(fetched), my_name), meta))
     el.append(Spacer(1, 10))
     for b in summary["alert_basics"]:
         wt = Table([[Paragraph("<b>ACTIVE FEDERAL ALERT FLAG — {}:</b> {}.".format(
@@ -551,8 +575,8 @@ def _render_pdf(lead, findings, summary, fetched):
         Paragraph(str(summary["n_investigate"]), statnum),
         Paragraph(str(summary["n_inspections"]), statnum)],
         [Paragraph("violations in your<br/>24-month window", statlbl),
-         Paragraph("look challengeable<br/>right now", statlbl),
-         Paragraph("worth investigating<br/>with your records", statlbl),
+         Paragraph("flagged for<br/>evidence review", statlbl),
+         Paragraph("records to check<br/>against your files", statlbl),
          Paragraph("inspections<br/>on file", statlbl)]],
         colWidths=[1.8 * inch] * 4)
     stats.setStyle(TableStyle([
@@ -567,10 +591,21 @@ def _render_pdf(lead, findings, summary, fetched):
     el.append(Spacer(1, 10))
 
     el.append(Paragraph(
-        "Every violation below is still counting against your CSA scores. Carriers with elevated scores lose an "
-        "estimated 20&ndash;40% of available freight opportunities, pay more at every insurance renewal, and get "
-        "inspected more often. Under the April 2026 DataQs rules, wrong records only come off if someone challenges "
-        "them with the right evidence &mdash; before they do their damage.", body))
+        "Each item below is still inside your 24-month scoring window. Elevated safety indicators may affect insurance "
+        "underwriting, roadside-inspection exposure, and broker qualification. Some of these records may not belong on "
+        "your file &mdash; but under the new DataQs rules (April 2026), a record only comes off if someone reviews it "
+        "and files a supported challenge.", body))
+    el.append(Spacer(1, 8))
+    ct = Table([[Paragraph("<b>Want us to verify these findings against your records?</b> Call or text {} at {} "
+                           "&mdash; Founding Carrier Record Rescue, $500 flat.".format(my_name, my_phone), ctamini)]],
+               colWidths=[7.2 * inch])
+    ct.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eff6ff")),
+        ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#bfdbfe")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    el.append(ct)
     el.append(Spacer(1, 10))
     el.append(Paragraph("What we found on your record", h2))
 
@@ -609,20 +644,21 @@ def _render_pdf(lead, findings, summary, fetched):
         el.append(Paragraph("...plus {} more records — full list reviewed in your paid audit.".format(
             len(findings) - 28), meta))
     el.append(Spacer(1, 14))
-    el.append(Paragraph("<b>Next step — Founding Carrier Record Rescue ($500 flat):</b> full 24-month audit against "
-                        "your own evidence (ELD, dashcam, tickets, court outcomes), plus your first complete DataQs "
-                        "challenge package, filed and chased through every deadline of the 21-day review until you have "
-                        "a written answer. Founding price, first 10 carriers only. Then continuous monitoring from "
-                        "$149/mo. <b>Perfect Package Guarantee:</b> if we miss a filing deadline or omit evidence you "
-                        "provided on time, that case is free and the next eligible one is on us.", body))
+    el.append(Paragraph("<b>Next step — Founding Carrier Record Rescue ($500 flat):</b> we review your full 24-month "
+                        "record against your own evidence (ELD, dashcam, citations, court outcomes), prepare the "
+                        "strongest supportable DataQs challenge for each flagged record, <b>send it to you for approval, "
+                        "submit it with your authorization</b>, and track it through the written decision. Founding "
+                        "price, first 10 carriers only. Then continuous monitoring from $149/mo. <b>Perfect Package "
+                        "Guarantee:</b> if we miss a filing deadline under our control, or omit evidence you submitted "
+                        "by the requested date, we refund your $500 service fee and prepare your next eligible challenge "
+                        "at no charge.", body))
     el.append(Spacer(1, 6))
-    el.append(Paragraph("Call: [YOUR PHONE] — Email: [YOUR EMAIL]", body))
+    el.append(Paragraph("Call or text: {} &nbsp;&middot;&nbsp; Email: {}".format(my_phone, my_email), body))
     el.append(Spacer(1, 12))
     el.append(Paragraph("Independent service &mdash; not affiliated with FMCSA or any state agency. Prepared from public "
-                        "FMCSA SMS/MCMIS data. Identifies records that may merit a DataQs Request for Data Review; not "
-                        "legal advice. Correction decisions are made solely by FMCSA and state reviewing agencies. "
-                        "'Challengeable' reflects our reading of the public record; your evidence determines what is "
-                        "actually filed.", small))
+                        "FMCSA SMS/MCMIS data; identifies records that may merit a DataQs Request for Data Review. Not "
+                        "legal advice. Correction decisions are made solely by FMCSA and state reviewing agencies; "
+                        "supporting evidence from your files determines what is actually filed.", small))
     doc.build(el)
     return path
 

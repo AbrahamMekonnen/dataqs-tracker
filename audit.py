@@ -9,12 +9,13 @@ import requests
 VIOL_URL = "https://data.transportation.gov/resource/8mt8-2mdr.json"
 INSP_URL = "https://data.transportation.gov/resource/rbkj-cgst.json"
 
+# Careful, non-absolute language (per review): "may affect", not "will cost you".
 BASIC_CONSEQUENCE = {
-    "Unsafe Driving": "the #1 score brokers screen on before tendering loads",
-    "HOS Compliance": "a top trigger for focused roadside inspections",
-    "Driver Fitness": "a common reason insurers re-rate premiums upward",
-    "Controlled Substances/Alcohol": "an immediate red flag for shippers and insurers",
-    "Vehicle Maintenance": "the most common alert - and the most fixable on paper",
+    "Unsafe Driving": "one of the indicators brokers look at before assigning loads",
+    "Hours-of-Service Compliance": "may draw additional roadside-inspection attention",
+    "Driver Fitness": "may receive additional attention from insurers and brokers",
+    "Controlled Substances/Alcohol": "may draw added scrutiny from shippers and insurers",
+    "Vehicle Maintenance": "the most common alert, and often the most document-fixable",
 }
 
 
@@ -66,7 +67,8 @@ def analyze(viols, insps, alert_basics):
     basic_severity = {}
     for v in viols:
         d = _parse_date(v.get("insp_date", ""))
-        basic = v.get("basic_desc", "Other")
+        # government data embeds soft hyphens (­) in some category names
+        basic = (v.get("basic_desc") or "Other").replace("­", "")
         sev = int(float(v.get("severity_weight", 0) or 0))
         oos = str(v.get("oos_indicator", "false")).lower() == "true"
         in_alert = basic_map.get(basic, basic) in alert_set
@@ -82,20 +84,20 @@ def analyze(viols, insps, alert_basics):
         is_ticket_shaped = "State/Local Laws" in section or basic == "Unsafe Driving"
 
         if is_dup:
-            verdict, priority = "VERIFY - possible duplicate entry", 1
-            evidence = "Pull the inspection report: if one event was recorded twice, challenge as duplicate"
+            verdict, priority = "VERIFY - repeated entry in public data", 1
+            evidence = "Compare both entries against the full inspection report before treating as a duplicate"
         elif is_ticket_shaped:
-            verdict, priority = "CHALLENGE IF TICKET WAS DISMISSED", 2
-            evidence = "Court disposition / citation outcome; ELD + dashcam for the day"
+            verdict, priority = "POSSIBLE CHALLENGE - if citation was dismissed or amended", 2
+            evidence = "Court disposition / citation outcome; ELD + dashcam for that day"
         elif oos:
-            verdict, priority = "INVESTIGATE - out-of-service violation", 3
+            verdict, priority = "REVIEW - out-of-service item", 3
             evidence = "Inspection report accuracy check; repair invoices; photos"
         elif sev >= 7 and in_alert:
-            verdict, priority = "INVESTIGATE - high severity in alert BASIC", 4
+            verdict, priority = "REVIEW - high-severity item", 4
             evidence = "ELD logs, dashcam, maintenance records for that date"
         elif days_left is not None and days_left <= 90:
-            verdict, priority = "LEAVE ALONE - rolls off soon", 8
-            evidence = "None needed - ages out on " + rolloff.strftime("%b %d, %Y")
+            verdict, priority = "AGES OFF SOON", 8
+            evidence = "None needed - ages off on " + rolloff.strftime("%b %d, %Y")
         else:
             verdict, priority = "MONITOR", 9
             evidence = "-"
@@ -127,7 +129,7 @@ def analyze(viols, insps, alert_basics):
         "n_inspections": len(insps),
         "basic_severity": basic_severity,
         "alert_basics": alert_basic_names,
-        "consequences": {b: BASIC_CONSEQUENCE.get(b, "affects your CSA percentile")
+        "consequences": {b: BASIC_CONSEQUENCE.get(b, "may affect how your carrier is screened")
                          for b in alert_basic_names},
     }
     return findings, summary

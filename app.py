@@ -349,15 +349,15 @@ Prepared by {{contact['my_name'] or 'CSA Record Rescue'}} &middot; CSA Record Re
 
 <div class="statrow">
  <div class="stat"><b>{{summary['total_viols']}}</b><span>violations in your 24-month scoring window</span></div>
- <div class="stat"><b>{{summary['n_challenge']}}</b><span>flagged for evidence review</span></div>
- <div class="stat"><b>{{summary['n_investigate']}}</b><span>records to check against your files</span></div>
+ <div class="stat"><b>{{summary['n_challenge']}}</b><span>possible challenge candidates</span></div>
+ <div class="stat"><b>{{summary['n_investigate']}}</b><span>verify or review items</span></div>
  <div class="stat"><b>{{summary['n_inspections']}}</b><span>inspections on file</span></div>
 </div>
 
 <p style="font-size:14px">Each item below is still inside your 24-month scoring window. Elevated safety indicators may affect
-insurance underwriting, roadside-inspection exposure, and broker qualification. Some of these records may not belong on
-your file &mdash; but under the new DataQs rules (April 2026), a record only comes off if someone reviews it and files a
-supported challenge.</p>
+insurance underwriting, roadside-inspection exposure, and broker qualification. Some of these records may be inaccurate,
+duplicated, or eligible for review based on documentation in your files &mdash; but under the new DataQs rules
+(April 2026), a record only comes off if someone reviews it and files a supported challenge.</p>
 
 <div class="ctamini">Want us to verify these findings against your records? Call or text
 {{contact['my_name'] or 'us'}} at <b>{{contact['my_phone'] or '[phone]'}}</b> &mdash; Founding Carrier Record Rescue, $500 flat.</div>
@@ -382,11 +382,11 @@ supported challenge.</p>
 
 <div class="cta">
 <h2>What we'd do next — the Founding Carrier Record Rescue</h2>
-<p>We review your full 24-month record against your own evidence (ELD, dashcam, citations, court outcomes), prepare the
-strongest supportable DataQs challenge for each flagged record, <b>send it to you for approval, submit it with your
-authorization</b>, and track it through the written decision.</p>
+<p>We review your full 24-month record against your evidence (ELD, dashcam, citations, court outcomes), identify the
+strongest supportable challenge, prepare your <b>first</b> complete DataQs challenge package, send it to you for approval,
+submit it with your authorization, and track it through the written decision.</p>
 <div class="price">$500 flat — full review + your first challenge package</div>
-<div style="font-size:12.5px;margin-top:4px">Founding price, limited to our first 10 carriers. Then continuous monitoring from $149/mo — we watch your record and preserve evidence before it disappears.</div>
+<div style="font-size:12.5px;margin-top:4px"><b>Optional</b> continuous monitoring starts at $149/mo after the rescue — we watch your record and preserve evidence before it disappears. Founding price, first 10 carriers only.</div>
 <div class="guarantee"><b>Perfect Package Guarantee:</b> if we miss a filing deadline under our control, or omit evidence
 you submitted by the requested date, we refund your $500 service fee and prepare your next eligible challenge at no charge.</div>
 <div style="margin-top:12px;font-size:13.5px">📞 {{contact['my_phone'] or '[phone]'}} &nbsp;&middot;&nbsp; ✉ {{contact['smtp_user'] or '[email]'}}</div>
@@ -575,8 +575,8 @@ def _render_pdf(lead, findings, summary, fetched):
         Paragraph(str(summary["n_investigate"]), statnum),
         Paragraph(str(summary["n_inspections"]), statnum)],
         [Paragraph("violations in your<br/>24-month window", statlbl),
-         Paragraph("flagged for<br/>evidence review", statlbl),
-         Paragraph("records to check<br/>against your files", statlbl),
+         Paragraph("possible challenge<br/>candidates", statlbl),
+         Paragraph("verify or<br/>review items", statlbl),
          Paragraph("inspections<br/>on file", statlbl)]],
         colWidths=[1.8 * inch] * 4)
     stats.setStyle(TableStyle([
@@ -592,9 +592,9 @@ def _render_pdf(lead, findings, summary, fetched):
 
     el.append(Paragraph(
         "Each item below is still inside your 24-month scoring window. Elevated safety indicators may affect insurance "
-        "underwriting, roadside-inspection exposure, and broker qualification. Some of these records may not belong on "
-        "your file &mdash; but under the new DataQs rules (April 2026), a record only comes off if someone reviews it "
-        "and files a supported challenge.", body))
+        "underwriting, roadside-inspection exposure, and broker qualification. Some of these records may be inaccurate, "
+        "duplicated, or eligible for review based on documentation in your files &mdash; but under the new DataQs rules "
+        "(April 2026), a record only comes off if someone reviews it and files a supported challenge.", body))
     el.append(Spacer(1, 8))
     ct = Table([[Paragraph("<b>Want us to verify these findings against your records?</b> Call or text {} at {} "
                            "&mdash; Founding Carrier Record Rescue, $500 flat.".format(my_name, my_phone), ctamini)]],
@@ -633,9 +633,9 @@ def _render_pdf(lead, findings, summary, fetched):
             f["verdict"], f["evidence"]), t3s))
 
     el.append(PageBreak())
-    el.append(Paragraph("Complete findings", h2))
-    el.append(Paragraph("Every record still inside your 24-month scoring window. Repeated entries in the public "
-                        "data are collapsed into one line.", t3s))
+    el.append(Paragraph("Flagged findings", h2))
+    el.append(Paragraph("The records we'd act on first. Repeated entries in the public data are collapsed into "
+                        "one line; lower-priority records are summarized at the end.", t3s))
 
     rows = [["Date", "Violation", "BASIC", "Sev.", "Our read", "Evidence to check"]]
     vstyles = []
@@ -683,13 +683,13 @@ def _render_pdf(lead, findings, summary, fetched):
                             " — all reviewed in your paid audit.", meta))
     el.append(Spacer(1, 14))
     el.append(Paragraph("<b>Next step — Founding Carrier Record Rescue ($500 flat):</b> we review your full 24-month "
-                        "record against your own evidence (ELD, dashcam, citations, court outcomes), prepare the "
-                        "strongest supportable DataQs challenge for each flagged record, <b>send it to you for approval, "
-                        "submit it with your authorization</b>, and track it through the written decision. Founding "
-                        "price, first 10 carriers only. Then continuous monitoring from $149/mo. <b>Perfect Package "
-                        "Guarantee:</b> if we miss a filing deadline under our control, or omit evidence you submitted "
-                        "by the requested date, we refund your $500 service fee and prepare your next eligible challenge "
-                        "at no charge.", body))
+                        "record against your evidence (ELD, dashcam, citations, court outcomes), identify the strongest "
+                        "supportable challenge, prepare your <b>first</b> complete DataQs challenge package, send it to "
+                        "you for approval, submit it with your authorization, and track it through the written decision. "
+                        "Founding price, first 10 carriers only. <b>Optional</b> continuous monitoring starts at $149/mo "
+                        "after the rescue. <b>Perfect Package Guarantee:</b> if we miss a filing deadline under our "
+                        "control, or omit evidence you submitted by the requested date, we refund your $500 service fee "
+                        "and prepare your next eligible challenge at no charge.", body))
     el.append(Spacer(1, 6))
     el.append(Paragraph("Call or text: {} &nbsp;&middot;&nbsp; Email: {}".format(my_phone, my_email), body))
     el.append(Spacer(1, 12))

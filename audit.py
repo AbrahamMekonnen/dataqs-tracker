@@ -177,6 +177,26 @@ def analyze(viols, insps, alert_basics):
     findings.sort(key=lambda f: (f["priority"], -f["severity"]))
     n_challenge = sum(1 for f in findings if f["priority"] <= 2)
     n_investigate = sum(1 for f in findings if f["priority"] in (3, 4, 5))
+
+    # diversify the top 3 so it showcases the DIFFERENT ways we find value
+    # (a possible challenge, a possible duplicate, a record-accuracy review) —
+    # not three near-identical speeding rows
+    top3 = []
+    used = set()
+    for cond in (lambda f: f["priority"] <= 2,       # possible challenge
+                 lambda f: f["priority"] == 3,       # possible duplicate
+                 lambda f: f["priority"] in (4, 5)):  # OOS / accuracy review
+        for i, f in enumerate(findings):
+            if i not in used and cond(f):
+                top3.append(f)
+                used.add(i)
+                break
+    for i, f in enumerate(findings):  # fill remaining slots by priority
+        if len(top3) >= 3:
+            break
+        if i not in used:
+            top3.append(f)
+            used.add(i)
     alert_basic_names = [b for b in basic_severity
                          if basic_map.get(b, b) in alert_set]
     summary = {
@@ -184,7 +204,7 @@ def analyze(viols, insps, alert_basics):
         "n_records": len(findings),
         "n_challenge": n_challenge,
         "n_investigate": n_investigate,
-        "top3": findings[:3],
+        "top3": top3,
         "n_inspections": len(insps),
         "basic_severity": basic_severity,
         "alert_basics": alert_basic_names,

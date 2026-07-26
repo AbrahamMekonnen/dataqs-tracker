@@ -132,7 +132,7 @@ def _host():
 
 @app.before_request
 def gate():
-    if request.endpoint in ("login", "static", "landing"):
+    if request.endpoint in ("login", "static", "landing", "sample_audit"):
         return None
     # the public marketing page on the root domain needs no PIN
     if _host() in PUBLIC_HOSTS and request.path == "/":
@@ -148,6 +148,11 @@ def landing():
     return render_template_string(
         LANDING_PAGE, phone=cfg.get("my_phone") or "408-647-5890",
         email="abraham@csarecordrescue.com", name=cfg.get("my_name") or "Abraham")
+
+
+@app.route("/site/sample")
+def sample_audit():
+    return render_template_string(SAMPLE_AUDIT_PAGE)
 
 
 _attempts = {}  # ip -> [count, first_attempt_ts]
@@ -456,7 +461,7 @@ LANDING_PAGE = """<!doctype html>
  .offer li{margin:5px 0}
  .cols{display:flex;gap:22px;flex-wrap:wrap}
  .card{flex:1;min-width:240px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
- .avatar{width:64px;height:64px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;float:left;margin:0 14px 6px 0}
+ .avatar{width:64px;height:64px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;letter-spacing:1px;float:left;margin:0 14px 6px 0}
  .contact a{color:#0563c1}
  .disc{font-size:12.5px;color:var(--muted)}
  .disc li{margin:3px 0}
@@ -464,6 +469,7 @@ LANDING_PAGE = """<!doctype html>
  .sample{border:1px solid var(--line);border-radius:12px;overflow:hidden;filter:saturate(.95)}
  .sample .top{background:#fff;padding:16px 18px;border-bottom:1px solid var(--line)}
  .sname{font-weight:700;font-size:16px}
+ .abox{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:7px;padding:7px 10px;font-size:12.5px;margin-top:8px}
  .blur{filter:blur(4px);user-select:none}
  .stat4{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
  .st{flex:1;min-width:120px;background:#f6f8fb;border:1px solid #e2e8f0;border-radius:8px;padding:8px;text-align:center}
@@ -482,9 +488,10 @@ LANDING_PAGE = """<!doctype html>
 </div></header>
 
 <div class="hero"><div class="wrap">
-  <h1>Incorrect violations can cost carriers loads, insurance money, and time.</h1>
-  <p class="sub">We help small carriers challenge federal safety records that shouldn't be there — using the official FMCSA DataQs process.</p>
+  <h1>Incorrect safety records can cost carriers loads, insurance money, and time.</h1>
+  <p class="sub">We review your public FMCSA record, identify entries worth investigating, gather the supporting evidence, and prepare the DataQs challenge with your approval.</p>
   <a class="btn" href="tel:{{phone}}">Call or text Abraham at {{phone}}</a>
+  <p class="disc" style="margin:14px 0 0">Independent service — not affiliated with FMCSA or any state agency. Government reviewers make all correction decisions.</p>
 </div></div>
 
 <section><div class="wrap">
@@ -504,6 +511,20 @@ LANDING_PAGE = """<!doctype html>
 </div></section>
 
 <section><div class="wrap">
+  <h2>What we may ask you for</h2>
+  <p>Depending on the record:</p>
+  <ul>
+    <li>Inspection reports</li>
+    <li>Citations and court outcomes</li>
+    <li>CDL or medical documents</li>
+    <li>ELD records</li>
+    <li>Available dashcam footage</li>
+    <li>Maintenance records or dated photos</li>
+  </ul>
+  <p style="font-weight:600">We only prepare a challenge when the available evidence supports one.</p>
+</div></section>
+
+<section><div class="wrap">
   <h2>The offer</h2>
   <div class="offer">
     <div class="price">Founding Carrier Record Rescue — $500 flat</div>
@@ -514,6 +535,7 @@ LANDING_PAGE = """<!doctype html>
       <li>Your approval before submission</li>
       <li>Deadline and decision tracking</li>
     </ul>
+    <p style="margin:12px 0 0;font-weight:600">You approve every filing. The reviewing government agency makes the final decision.</p>
     <p style="margin:14px 0 0"><a class="btn navy" href="tel:{{phone}}">Get started — call or text {{phone}}</a></p>
   </div>
 </div></section>
@@ -524,6 +546,8 @@ LANDING_PAGE = """<!doctype html>
     <div class="top">
       <div class="sname blur">SAMPLE CARRIER LLC</div>
       <div class="disc blur">USDOT 0000000 · CITY, ST</div>
+      <div class="abox">Active federal alert flag — Vehicle Maintenance</div>
+      <div class="abox">Active federal alert flag — Hours-of-Service Compliance</div>
       <div class="stat4">
         <div class="st"><b>53</b><span>violation entries</span></div>
         <div class="st"><b>10</b><span>challenge candidates</span></div>
@@ -535,6 +559,7 @@ LANDING_PAGE = """<!doctype html>
     <div class="srow"><span>May 22, 2026</span><span>Cargo securement</span><span class="tag y">VERIFY — repeated entry</span></div>
     <div class="srow"><span>Mar 04, 2026</span><span>License / CDL issue</span><span class="tag y">REVIEW — out-of-service</span></div>
   </div>
+  <div style="text-align:center;margin-top:14px"><a class="btn navy" href="/site/sample" target="_blank">View sample audit</a></div>
   <div class="cap">Sample CSA Record Error Audit — carrier details blurred. Every audit is prepared from your own public federal record.</div>
 </div></section>
 
@@ -542,7 +567,7 @@ LANDING_PAGE = """<!doctype html>
   <h2>Who you're working with</h2>
   <div class="cols">
     <div class="card contact">
-      <div class="avatar">A</div>
+      <div class="avatar">AR</div>
       <b>Prepared and managed by {{name}}</b><br>
       <span class="disc">CSA record reviews &amp; DataQs filing support</span><br><br>
       📞 <a href="tel:{{phone}}">{{phone}}</a><br>
@@ -570,6 +595,59 @@ LANDING_PAGE = """<!doctype html>
 </div></footer>
 
 </body></html>"""
+
+
+SAMPLE_AUDIT_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sample CSA Record Error Audit</title>
+<style>
+ body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#eef1f5;color:#1a2733}
+ .banner{background:#1f3864;color:#fff;text-align:center;padding:8px;font-size:13px}
+ .sheet{max-width:820px;margin:18px auto;background:#fff;border:1px solid #d8dfe8;border-radius:10px;padding:30px 34px}
+ h1{font-size:23px;margin:0}
+ .subtitle{font-size:13.5px;color:#334155;margin:3px 0 8px}
+ .meta{color:#5b6b7a;font-size:12.5px;margin:0 0 16px;line-height:1.5}
+ .blur{filter:blur(4px);user-select:none}
+ .alertbox{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:8px;padding:10px 14px;font-size:13.5px;margin-bottom:6px}
+ .statrow{display:flex;gap:10px;margin:14px 0}
+ .stat{flex:1;background:#f6f8fb;border:1px solid #e2e8f0;border-radius:8px;padding:10px;text-align:center}
+ .stat b{display:block;font-size:21px}.stat span{font-size:11px;color:#5b6b7a}
+ h2{font-size:15px;color:#1f3864;margin:20px 0 8px}
+ table{border-collapse:collapse;width:100%;font-size:12.5px}
+ th{background:#1f3864;color:#fff;padding:6px 8px;text-align:left}
+ td{border-bottom:1px solid #eef1f5;padding:6px 8px;vertical-align:top}
+ .t b{font-size:12.5px}.t small{color:#8494a5}
+ .g{background:#dcfce7;color:#14532d;font-weight:600;padding:1px 6px;border-radius:9px;font-size:11px}
+ .y{background:#fef9c3;color:#713f12;font-weight:600;padding:1px 6px;border-radius:9px;font-size:11px}
+ .fine{color:#8494a5;font-size:11px;margin-top:18px;line-height:1.5}
+</style></head><body>
+<div class="banner">SAMPLE — illustrative example with anonymized data. Your audit is prepared from your own public federal record.</div>
+<div class="sheet">
+ <h1>CSA Record Error Audit</h1>
+ <div class="subtitle">Potentially incorrect records that may be affecting your carrier's safety profile</div>
+ <div class="meta">Prepared for <b class="blur">SAMPLE CARRIER LLC</b> (USDOT <span class="blur">0000000</span> · <span class="blur">CITY, ST</span>) on Month 00, 2026<br>
+ Prepared by Abraham · CSA Record Rescue · from public FMCSA data</div>
+
+ <div class="alertbox">Active federal alert flag — <b>Vehicle Maintenance</b>: some items may be verified using inspection reports, maintenance records, and dated photos.</div>
+ <div class="alertbox">Active federal alert flag — <b>Hours-of-Service Compliance</b>: may draw additional roadside-inspection attention.</div>
+
+ <div class="statrow">
+  <div class="stat"><b>53</b><span>violation entries</span></div>
+  <div class="stat"><b>10</b><span>possible challenge candidates</span></div>
+  <div class="stat"><b>13</b><span>verify or review items</span></div>
+  <div class="stat"><b>35</b><span>inspections on file</span></div>
+ </div>
+
+ <h2>Highest-priority findings</h2>
+ <table>
+  <tr><th>Date</th><th>Violation</th><th>Sev.</th><th>Our read</th><th>Evidence to check</th></tr>
+  <tr class="t"><td>Jun 13, 2025</td><td><b>Speeding</b><br><small>State/Local Laws - Speeding work/construction zone</small></td><td>10</td><td><span class="g">POSSIBLE CHALLENGE</span></td><td>Court disposition or citation outcome; ELD + dashcam for that day</td></tr>
+  <tr class="t"><td>May 22, 2026</td><td><b>Cargo securement</b><br><small>Cargo not secured to prevent spilling (OOS)</small></td><td>7</td><td><span class="y">VERIFY — repeated entry</span></td><td>Full inspection report — confirm whether recorded more than once</td></tr>
+  <tr class="t"><td>Mar 04, 2026</td><td><b>License / CDL issue</b><br><small>Operate a CMV in violation of a restriction (OOS)</small></td><td>8</td><td><span class="y">REVIEW — out-of-service</span></td><td>CDL showing class, endorsements, restrictions; state motor-vehicle record</td></tr>
+ </table>
+
+ <div class="fine">Independent service — not affiliated with FMCSA or any state agency. Prepared from public FMCSA SMS/MCMIS data; identifies records that may merit a DataQs Request for Data Review. Not legal advice. Correction decisions are made solely by FMCSA and state reviewing agencies. This is an illustrative sample, not a real carrier's record.</div>
+</div></body></html>"""
 
 
 def db():

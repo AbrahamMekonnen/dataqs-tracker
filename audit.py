@@ -52,7 +52,7 @@ _EVIDENCE_BY_KIND = {
     "medical": ("Full inspection report; valid medical certificate and examiner documentation for that date; "
                 "state self-certification record"),
     "drugs": "Full inspection report; documentation and context of the finding; any related test or court records",
-    "license": ("Full inspection report; copy of the CDL showing class/endorsements/restrictions; state "
+    "license": ("Full inspection report; copy of the CDL showing class, endorsements, and restrictions; state "
                 "motor-vehicle record showing valid status on the inspection date"),
     "hos": "ELD logs and supporting duty records for that period; the inspection report",
     "hazmat": "Full inspection report; dated photos of placarding; shipping papers for the load",

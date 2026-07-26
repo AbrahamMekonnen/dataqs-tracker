@@ -353,6 +353,7 @@ Prepared by {{contact['my_name'] or 'CSA Record Rescue'}} &middot; CSA Record Re
  <div class="stat"><b>{{summary['n_investigate']}}</b><span>verify or review items</span></div>
  <div class="stat"><b>{{summary['n_inspections']}}</b><span>inspections on file</span></div>
 </div>
+<div style="text-align:center;font-size:11.5px;color:#5b6b7a;margin:-6px 0 4px">{{summary['total_viols']}} raw violation entries, representing {{summary['n_records']}} unique records after repeated entries are collapsed.</div>
 
 <p style="font-size:14px">Each item below is still inside your 24-month scoring window. Elevated safety indicators may affect
 insurance underwriting, roadside-inspection exposure, and broker qualification. Some of these records may be inaccurate,
@@ -588,6 +589,10 @@ def _render_pdf(lead, findings, summary, fetched):
         ("TOPPADDING", (0, 0), (-1, 0), 7), ("BOTTOMPADDING", (0, 1), (-1, 1), 7),
     ]))
     el.append(stats)
+    el.append(Paragraph(
+        "{} raw violation entries, representing {} unique records after repeated entries are collapsed.".format(
+            summary["total_viols"], summary.get("n_records", summary["total_viols"])),
+        ParagraphStyle("note", parent=statlbl, alignment=1, spaceBefore=4)))
     el.append(Spacer(1, 10))
 
     el.append(Paragraph(

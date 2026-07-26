@@ -76,9 +76,9 @@ Here's what stood out:
 
 The attached audit shows which records appear worth reviewing and what evidence could support a DataQs challenge.
 
-The Founding Carrier Record Rescue is $500 flat. That includes a complete review of the 24-month record, identification of the strongest supportable case, preparation of the first challenge package, your approval before submission, submission with your authorization, and tracking through the written decision.
-
 [TOP_QUESTION]
+
+The Founding Carrier Record Rescue is $500 flat. It includes a complete review of the 24-month record, identification of the strongest supportable case, preparation of the first challenge package, your approval before submission, submission with your authorization, and tracking through the written decision.
 
 Reply here or call/text me at [MY_PHONE].
 
@@ -742,10 +742,10 @@ def send_audit(lead_id):
     top_challenge = next((f for f in findings if f["priority"] == 1), None)
     top_dup = next((f for f in findings if f["priority"] == 3), None)
     if top_challenge:
-        top_q = "One quick question to get started: was the {} {} citation dismissed, reduced, or amended in court?".format(
+        top_q = "One question: Was the {} {} citation dismissed, reduced, or amended in court?".format(
             top_challenge["date"], top_challenge["title"].lower())
     elif top_dup:
-        top_q = "One quick question to get started: do you still have the inspection report from the {} {} inspection?".format(
+        top_q = "One question: Do you still have the inspection report from the {} {} inspection?".format(
             top_dup["date"], top_dup["title"].lower())
     first_name = (lead["contact_name"] or "there").strip() or "there"
     for token, val in [("[COMPANY]", lead["company"]), ("[DOT]", lead["dot_number"]),

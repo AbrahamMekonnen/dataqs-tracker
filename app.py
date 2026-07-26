@@ -62,27 +62,25 @@ print("[startup] email mode:", "Brevo HTTPS API" if _ec.get("api_key")
             else "NOT CONFIGURED"), flush=True)
 
 
-RECOMMENDED_TEMPLATE = """Subject: Your CSA Record Audit - [COMPANY]
+RECOMMENDED_TEMPLATE = """Subject: [COMPANY] - CSA record audit (DOT [DOT])
 
 Hi,
 
-As promised, here's the CSA Record Error Audit I put together for [COMPANY] (USDOT [DOT]) from the public federal inspection record.
+Good talking with you. As promised, I attached the free audit of [COMPANY]'s federal safety record, DOT [DOT].
 
-A few things it flags:
-- [TOTAL] violations are still inside your 24-month scoring window
-- [CHALLENGE] look potentially challengeable, depending on the documents you have
-- your record currently shows alert flags in [ALERTS]
+Here's what stood out:
+- [TOTAL] raw violation entries are still inside the 24-month record
+- [CHALLENGE] appear to be possible challenge candidates based on the public data
+- The record has active alert flags in [ALERTS] - categories that may receive attention when brokers and insurers screen carriers
 
-The attached PDF lists the specific records and what evidence each one would need for a DataQs challenge. Nothing here is a guarantee - FMCSA and the states make the final call - but these are the items I'd look at first.
+The attached audit shows which records appear worth reviewing and what evidence could support a DataQs challenge.
 
-If you'd like me to run them down for you, the Founding Carrier Record Rescue is $500 flat: I review all 24 months, build your first challenge, file it, and track it through the 21-day review until you get a written answer. Founding price for my first 10 carriers.
+The Founding Carrier Record Rescue is $500 flat. That includes a complete review of the 24-month record, identification of the strongest supportable case, preparation of the first challenge package, your approval before submission, filing with your authorization, and tracking through the written decision.
 
-Either way, happy to answer any questions.
+[TOP_QUESTION]Reply here or call/text me at [MY_PHONE] with any questions.
 
 [MY_NAME]
 CSA Record Rescue
-CSA record reviews and DataQs filing support
-[MY_PHONE]
 Independent service - not affiliated with FMCSA or any state agency
 """
 
@@ -735,10 +733,17 @@ def send_audit(lead_id):
     with open(TEMPLATE_FILE, encoding="utf-8") as f:
         tpl = f.read()
     alerts = ", ".join(summary["alert_basics"]) or "multiple categories"
+    # a specific, conversation-starting question anchored to the top citation
+    top_q = ""
+    for f in findings:
+        if f["priority"] == 1:  # a possible-challenge citation
+            top_q = ("One quick question to get started: was the {} {} citation dismissed or "
+                     "amended in court?\n\n").format(f["date"], f["title"].lower())
+            break
     for token, val in [("[COMPANY]", lead["company"]), ("[DOT]", lead["dot_number"]),
                        ("[TOTAL]", str(summary["total_viols"])),
                        ("[CHALLENGE]", str(summary["n_challenge"])),
-                       ("[ALERTS]", alerts),
+                       ("[ALERTS]", alerts), ("[TOP_QUESTION]", top_q),
                        ("[MY_NAME]", cfg.get("my_name", "")),
                        ("[MY_PHONE]", cfg.get("my_phone", ""))]:
         tpl = tpl.replace(token, val)
@@ -820,8 +825,8 @@ a{color:#0563c1}.saved{color:#16a34a;font-weight:600;margin-left:10px}</style></
 <h2>Email template</h2>
 <div class="sub">First line is the subject. These auto-fill per carrier:
 <span class="tok">[COMPANY]</span><span class="tok">[DOT]</span><span class="tok">[TOTAL]</span>
-<span class="tok">[CHALLENGE]</span><span class="tok">[ALERTS]</span><span class="tok">[MY_NAME]</span>
-<span class="tok">[MY_PHONE]</span></div>
+<span class="tok">[CHALLENGE]</span><span class="tok">[ALERTS]</span><span class="tok">[TOP_QUESTION]</span>
+<span class="tok">[MY_NAME]</span><span class="tok">[MY_PHONE]</span></div>
 <form method="post"><textarea name="template">{{tpl}}</textarea><br>
 <button>Save</button>{% if saved %}<span class="saved">saved ✓</span>{% endif %}
 <a href="/template?reset=1" style="margin-left:14px">Load recommended default</a>

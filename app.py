@@ -31,7 +31,31 @@ for _col in ("email", "contact_name"):
         _c.commit()
     except sqlite3.OperationalError:
         pass
+# per-challenge delivery-cost tracker (first-5-carriers market research)
+_c.execute("""CREATE TABLE IF NOT EXISTS cost_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    carrier TEXT DEFAULT '', dot TEXT DEFAULT '', violation TEXT DEFAULT '',
+    date_opened TEXT DEFAULT '', evidence_hrs TEXT DEFAULT '', drafting_hrs TEXT DEFAULT '',
+    comm_hrs TEXT DEFAULT '', filing_hrs TEXT DEFAULT '', reconsideration TEXT DEFAULT '',
+    recon_hrs TEXT DEFAULT '', direct_costs TEXT DEFAULT '', outcome TEXT DEFAULT '',
+    stated_value TEXT DEFAULT '', pay_again TEXT DEFAULT '')""")
+_c.commit()
 _c.close()
+
+COST_SETTINGS_FILE = os.path.join(DATA, "cost_settings.json")
+COST_FIELDS = {"carrier", "dot", "violation", "date_opened", "evidence_hrs", "drafting_hrs",
+               "comm_hrs", "filing_hrs", "reconsideration", "recon_hrs", "direct_costs",
+               "outcome", "stated_value", "pay_again"}
+
+
+def cost_settings():
+    d = {"rate": 40, "margin": 0.80, "package_price": 500, "included": 3}
+    if os.path.exists(COST_SETTINGS_FILE):
+        try:
+            d.update(json.load(open(COST_SETTINGS_FILE)))
+        except Exception:
+            pass
+    return d
 
 # email sending config: fill in the blanks in email_config.json (or set the
 # same keys as environment variables on the cloud host). For Gmail: enable
@@ -216,7 +240,7 @@ PAGE = """<!doctype html>
         font-size:13px;opacity:0;transition:opacity .3s}
 </style></head><body>
 <h1>DataQs Lead Tracker</h1>
-<div class="sub">{{total}} small carriers with active BASIC alert flags &middot; FMCSA SMS snapshot June 26, 2026 &middot; yellow cells are editable &middot; <b>Audit</b> builds the personalized audit page + PDF automatically &middot; <a href="/template">edit email template</a></div>
+<div class="sub">{{total}} small carriers with active BASIC alert flags &middot; FMCSA SMS snapshot June 26, 2026 &middot; yellow cells are editable &middot; <b>Audit</b> builds the personalized audit page + PDF automatically &middot; <a href="/template">edit email template</a> &middot; <a href="/costs">cost tracker</a></div>
 <div class="cards">
  <div class="card"><b id="c_new">-</b>New</div>
  <div class="card"><b id="c_work">-</b>Working</div>
@@ -650,6 +674,127 @@ SAMPLE_AUDIT_PAGE = """<!doctype html>
 
  <div class="fine">Independent service — not affiliated with FMCSA or any state agency. Prepared from public FMCSA SMS/MCMIS data; identifies records that may merit a DataQs Request for Data Review. Not legal advice. Correction decisions are made solely by FMCSA and state reviewing agencies. This is an illustrative sample, not a real carrier's record.</div>
 </div></body></html>"""
+
+
+COSTS_PAGE = """<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Cost Tracker</title>
+<style>
+ body{font-family:Segoe UI,Arial,sans-serif;margin:14px;background:#f5f7fa;color:#1a2733}
+ h2{margin:0 0 2px}.sub{color:#5b6b7a;font-size:12.5px;margin-bottom:12px}
+ a{color:#0563c1}
+ .set{background:#fff;border:1px solid #dde4ec;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
+ .set label{font-size:11.5px;color:#5b6b7a;display:block}
+ .set input{width:90px;padding:6px;border:1px solid #c3ceda;border-radius:6px;font-size:14px;background:#fffbe6}
+ .cards{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+ .card{background:#fff;border:1px solid #dde4ec;border-radius:8px;padding:9px 13px;font-size:12px;min-width:120px}
+ .card b{display:block;font-size:18px}
+ .card.hi{background:#1f3864;color:#fff}
+ .wrap{overflow-x:auto;background:#fff;border:1px solid #dde4ec;border-radius:8px}
+ table{border-collapse:collapse;width:100%;font-size:12.5px;white-space:nowrap}
+ th{background:#1f3864;color:#fff;padding:6px 7px;text-align:left;position:sticky;top:0}
+ td{border-bottom:1px solid #eef1f5;padding:2px 4px}
+ input.c,select.c{border:1px solid transparent;background:transparent;font-size:12.5px;padding:4px;width:100%;border-radius:4px}
+ input.c:focus,select.c:focus{outline:none;border-color:#3b82f6;background:#fff}
+ input.num{width:58px;background:#fffbe6;text-align:right}
+ td.calc{background:#f6f8fb;font-weight:600;text-align:right}
+ .del{color:#b91c1c;cursor:pointer;font-weight:700;padding:0 5px}
+ .add{margin:10px 0;padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer}
+ .saved{position:fixed;right:14px;bottom:14px;background:#16a34a;color:#fff;padding:6px 12px;border-radius:6px;font-size:13px;opacity:0;transition:.3s}
+</style></head><body>
+<h2>Cost Tracker</h2>
+<div class="sub">First 5 carriers = paid market research. Log time per challenge; it prices itself. &middot; <a href="/">← tracker</a></div>
+
+<div class="set">
+  <div><label>Replacement rate $/hr</label><input id="rate" type="number" step="1"></div>
+  <div><label>Target gross margin %</label><input id="margin" type="number" step="1"></div>
+  <div><label>Package price $</label><input id="package_price" type="number" step="10"></div>
+  <div><label>Challenges / package</label><input id="included" type="number" step="1"></div>
+  <div style="font-size:11px;color:#5b6b7a;max-width:240px">Use a real hourly rate — what you'd pay someone competent. Never $0.</div>
+</div>
+
+<div class="cards" id="cards"></div>
+
+<div class="wrap"><table id="t"><thead><tr>
+<th>Carrier</th><th>DOT</th><th>Violation</th><th>Opened</th>
+<th>Ev hrs</th><th>Draft hrs</th><th>Comm hrs</th><th>File hrs</th>
+<th>Recon?</th><th>Recon hrs</th><th>Direct $</th>
+<th>Total hrs</th><th>Cost</th>
+<th>Outcome</th><th>Value $</th><th>Pay again?</th><th></th>
+</tr></thead><tbody id="tb"></tbody></table></div>
+<button class="add" onclick="addRow()">+ Add challenge</button>
+<div class="saved" id="saved">saved ✓</div>
+
+<script>
+let DATA = {{rows|safe}};
+let S = {{settings|safe}};
+const HRS=['evidence_hrs','drafting_hrs','comm_hrs','filing_hrs','recon_hrs'];
+function num(v){ let n=parseFloat(v); return isNaN(n)?0:n; }
+function totalHrs(r){ return HRS.reduce((a,k)=>a+num(r[k]),0); }
+function cost(r){ return totalHrs(r)*num(S.rate)+num(r.direct_costs); }
+function median(a){ if(!a.length)return null; a=a.slice().sort((x,y)=>x-y); let m=Math.floor(a.length/2); return a.length%2?a[m]:(a[m-1]+a[m])/2; }
+function pct(a,p){ if(!a.length)return null; a=a.slice().sort((x,y)=>x-y); let i=p*(a.length-1),lo=Math.floor(i),hi=Math.ceil(i); return a[lo]+(a[hi]-a[lo])*(i-lo); }
+function money(v){ return v==null?'—':'$'+Math.round(v).toLocaleString(); }
+
+function save(id,field,value){
+  DATA.find(r=>r.id==id)[field]=value;
+  fetch('/costs/update',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:id,field:field,value:value})}).then(()=>flash());
+  render();
+}
+function flash(){ let s=document.getElementById('saved'); s.style.opacity=1; setTimeout(()=>s.style.opacity=0,700); }
+function saveSetting(k,el){ S[k]=el.value; fetch('/costs/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({[k]:el.value})}).then(()=>flash()); render(); }
+function addRow(){ fetch('/costs/add',{method:'POST'}).then(r=>r.json()).then(j=>{ DATA.push({id:j.id}); render(); }); }
+function delRow(id){ if(!confirm('Delete this challenge row?'))return; fetch('/costs/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(()=>{ DATA=DATA.filter(r=>r.id!=id); render(); }); }
+
+function cell(r,f,ph){ return '<input class="c" value="'+(r[f]||'').replace(/"/g,'&quot;')+'" placeholder="'+(ph||'')+'" onchange="save('+r.id+',\\''+f+'\\',this.value)">'; }
+function ncell(r,f){ return '<input class="c num" type="number" step="0.25" value="'+(r[f]||'')+'" onchange="save('+r.id+',\\''+f+'\\',this.value)">'; }
+function sel(r,f,opts){ let h='<select class="c" onchange="save('+r.id+',\\''+f+'\\',this.value)">'; opts.forEach(o=>{h+='<option'+(r[f]==o?' selected':'')+'>'+o+'</option>';}); return h+'</select>'; }
+
+function render(){
+  ['rate','margin','package_price','included'].forEach(k=>{ let el=document.getElementById(k); if(document.activeElement!=el) el.value = k=='margin'?Math.round(num(S.margin)*100):S[k]; });
+  let tb=document.getElementById('tb'); tb.innerHTML='';
+  DATA.forEach(r=>{
+    let tr=document.createElement('tr');
+    tr.innerHTML =
+      '<td>'+cell(r,'carrier','carrier')+'</td><td>'+cell(r,'dot')+'</td><td>'+cell(r,'violation')+'</td><td>'+cell(r,'date_opened')+'</td>'+
+      '<td>'+ncell(r,'evidence_hrs')+'</td><td>'+ncell(r,'drafting_hrs')+'</td><td>'+ncell(r,'comm_hrs')+'</td><td>'+ncell(r,'filing_hrs')+'</td>'+
+      '<td>'+sel(r,'reconsideration',['','No','Yes'])+'</td><td>'+ncell(r,'recon_hrs')+'</td><td>'+ncell(r,'direct_costs')+'</td>'+
+      '<td class="calc">'+totalHrs(r).toFixed(2)+'</td><td class="calc">'+money(cost(r))+'</td>'+
+      '<td>'+sel(r,'outcome',['','Pending','Corrected','Denied'])+'</td><td>'+ncell(r,'stated_value')+'</td>'+
+      '<td>'+sel(r,'pay_again',['','Yes','No','Price'])+'</td><td><span class="del" onclick="delRow('+r.id+')">✕</span></td>';
+    tb.appendChild(tr);
+  });
+  summary();
+}
+
+function summary(){
+  let costs=DATA.map(cost), n=DATA.length;
+  let med=median(costs), p80=pct(costs,0.8), marg=num(S.margin);
+  let recon=DATA.filter(r=>r.reconsideration=='Yes');
+  let reconRate=n?recon.length/n:null;
+  let vals=DATA.map(r=>num(r.stated_value)).filter(v=>v>0);
+  let avgVal=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+  let payYes=DATA.filter(r=>r.pay_again=='Yes').length;
+  let minMed=med==null?null:med/(1-marg), minP80=p80==null?null:p80/(1-marg);
+  let pkgCost=med==null?null:med*num(S.included);
+  let pkgProfit=pkgCost==null?null:num(S.package_price)-pkgCost;
+  let pkgMargin=pkgCost==null?null:1-pkgCost/num(S.package_price);
+  let c=[
+    ['challenges logged',n],
+    ['median cost / challenge',money(med)],
+    ['80th-pct cost',money(p80)],
+    ['MIN PRICE (from 80th-pct)',money(minP80),1],
+    ['min price (from median)',money(minMed)],
+    ['% needing reconsideration',reconRate==null?'—':Math.round(reconRate*100)+'%'],
+    ['package profit ($'+Math.round(num(S.package_price))+')',money(pkgProfit),pkgProfit!=null&&pkgProfit<0?2:0],
+    ['package margin',pkgMargin==null?'—':Math.round(pkgMargin*100)+'%'],
+    ['avg stated value',money(avgVal)],
+    ['would-pay-again',n?Math.round(payYes/n*100)+'%':'—'],
+  ];
+  document.getElementById('cards').innerHTML = c.map(x=>'<div class="card'+(x[2]==1?' hi':'')+'" '+(x[2]==2?'style=\\'background:#fef2f2;border-color:#fecaca\\'':'')+'><b>'+x[1]+'</b>'+x[0]+'</div>').join('');
+}
+render();
+</script></body></html>"""
 
 
 def db():
@@ -1126,6 +1271,62 @@ def maildebug():
     except Exception as e:
         out.append("events check failed: {}\n".format(e))
     return "<pre style='white-space:pre-wrap;font-size:12px'>" + "\n".join(out) + "</pre>"
+
+
+@app.route("/costs")
+def costs():
+    con = db()
+    rows = [dict(r) for r in con.execute("SELECT * FROM cost_entries ORDER BY id")]
+    con.close()
+    return render_template_string(COSTS_PAGE, rows=json.dumps(rows),
+                                  settings=json.dumps(cost_settings()))
+
+
+@app.route("/costs/add", methods=["POST"])
+def costs_add():
+    con = db()
+    cur = con.execute("INSERT INTO cost_entries (carrier) VALUES ('')")
+    con.commit()
+    nid = cur.lastrowid
+    con.close()
+    return jsonify(id=nid)
+
+
+@app.route("/costs/update", methods=["POST"])
+def costs_update():
+    d = request.get_json(force=True)
+    if d.get("field") not in COST_FIELDS:
+        return jsonify(error="bad field"), 400
+    con = db()
+    con.execute("UPDATE cost_entries SET {}=? WHERE id=?".format(d["field"]),
+                (d.get("value", ""), d["id"]))
+    con.commit()
+    con.close()
+    return jsonify(ok=True)
+
+
+@app.route("/costs/delete", methods=["POST"])
+def costs_delete():
+    con = db()
+    con.execute("DELETE FROM cost_entries WHERE id=?", (request.get_json(force=True)["id"],))
+    con.commit()
+    con.close()
+    return jsonify(ok=True)
+
+
+@app.route("/costs/settings", methods=["POST"])
+def costs_set():
+    d = request.get_json(force=True)
+    s = cost_settings()
+    for k in ("rate", "margin", "package_price", "included"):
+        if k in d:
+            try:
+                s[k] = float(d[k])
+            except (TypeError, ValueError):
+                pass
+    with open(COST_SETTINGS_FILE, "w") as f:
+        json.dump(s, f)
+    return jsonify(ok=True)
 
 
 @app.route("/template", methods=["GET", "POST"])

@@ -5,3 +5,6 @@ __pycache__/
 *.pyc
 tunnel.log
 Delivery_Cost_Tracker.xlsx
+email_config.json
+email_template.txt
+cost_settings.json
